@@ -4,7 +4,7 @@ import { constants as sdkConsts } from "@across-protocol/sdk";
 import { SignerOptions, getSigner } from "./SignerUtils";
 import { isDefined } from "./TypeGuards";
 
-const keyTypes = ["secret", "mnemonic", "privateKey", "gckms", "void"];
+const keyTypes = ["secret", "mnemonic", "privateKey", "gckms", "awskms", "void"];
 
 /**
  * Retrieves a signer based on both the CLI args and the env.
@@ -45,6 +45,8 @@ export function retrieveSignerFromCLIArgs(): Promise<Signer> {
  * @param keyType The key type to check.
  * @returns True if the key type is valid, false otherwise.
  */
-function isValidKeyType(keyType: string): keyType is "secret" | "mnemonic" | "privateKey" | "gckms" | "void" {
+function isValidKeyType(
+  keyType: string
+): keyType is "secret" | "mnemonic" | "privateKey" | "gckms" | "awskms" | "void" {
   return keyTypes.includes(keyType);
 }
