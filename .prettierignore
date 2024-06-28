@@ -1,7 +1,41 @@
+# Folders
 node_modules
 artifacts
 cache
 coverage*
-gasReporterOutput.json
-dist
 typechain*
+
+# Files
+LICENCE
+CODEOWNERS
+gasReporterOutput.json
+deployments/mainnet/.chainId
+src/monitor/.env.sample
+Dockerfile
+
+# project specific paths
+dist/
+
+## ignore files
+.*ignore
+
+# Ignore extensions
+*.env
+*.png
+*.sql
+*.sh
+*.html
+*.info
+*.xml
+*.log
+*.proto
+*.csv
+*.cmd
+*.tsbuildinfo
+*.blob
+*.lock
+*.keep
+*.txt
+
+# env example files
+*.env.example

@@ -50,7 +50,7 @@
   "scripts": {
     "lint": "yarn eslint && yarn prettier --list-different",
     "lint-fix": "yarn eslint --fix && yarn prettier --write",
-    "prettier": "prettier .",
+    "format": "prettier --write '**/*'",
     "eslint": "eslint .",
     "test": "RELAYER_TEST=true hardhat test",
     "build": "tsc --build",
