@@ -3,6 +3,7 @@ import { constants as ethersConsts, VoidSigner } from "ethers";
 import { typeguards } from "@across-protocol/sdk";
 import { Signer, Wallet, retrieveGckmsKeys, getGckmsConfig, isDefined, assert } from "./";
 import { ArweaveWalletJWKInterface, ArweaveWalletJWKInterfaceSS } from "../interfaces";
+import { getAwskmsConfig, retrieveAwskmsKeys } from "./AwskmsUtils";
 
 /**
  * Signer options for the getSigner function.
@@ -49,6 +50,9 @@ export async function getSigner({ keyType, gckmsKeys, cleanEnv, roAddress }: Sig
     case "gckms":
       signer = await getGckmsSigner(gckmsKeys);
       break;
+    case "awskms":
+      signer = await getAwskmsSigner(gckmsKeys);
+      break;
     case "secret":
       signer = await getSecretSigner();
       break;
@@ -59,7 +63,7 @@ export async function getSigner({ keyType, gckmsKeys, cleanEnv, roAddress }: Sig
       throw new Error(`getSigner: Unsupported signer key type (${keyType})`);
   }
   if (!signer) {
-    throw new Error('Must specify "secret", "mnemonic", "privateKey", "gckms" or "void" for keyType');
+    throw new Error('Must specify "secret", "mnemonic", "privateKey", "gckms", "awskms" or "void" for keyType');
   }
   if (cleanEnv) {
     cleanKeysFromEnvironment();
@@ -90,6 +94,19 @@ async function getGckmsSigner(keys?: string[]): Promise<Signer> {
   }
   const privateKeys = await retrieveGckmsKeys(getGckmsConfig(keys));
   return new Wallet(privateKeys[0]); // GCKMS retrieveGckmsKeys returns multiple keys. For now we only support 1.
+}
+
+/**
+ * Retrieves a signer based on the AWSKMS key set in the args.
+ * @returns A signer based on the AWSKMS key set in the args.
+ * @throws If the AWSKMS key is not set.
+ */
+async function getAwskmsSigner(keys?: string[]): Promise<Signer> {
+  if (!isDefined(keys) || keys.length === 0) {
+    throw new Error("Wallet AWSKMS selected but no keys parameter set! Set AWSKMS key (--keys <key>) to use");
+  }
+  const privateKeys = await retrieveAwskmsKeys(getAwskmsConfig(keys));
+  return new Wallet(privateKeys[0]); // AWSKMS retrieveAwskmsKeys returns multiple keys. For now we only support 1.
 }
 
 /**
