@@ -25,6 +25,28 @@ interface AwsS3StorageConfig {
 const { AWS_S3_STORAGE_CONFIG } = process.env;
 const storageConfig: AwsS3StorageConfig = AWS_S3_STORAGE_CONFIG ? JSON.parse(AWS_S3_STORAGE_CONFIG) : undefined;
 
+async function downloadEncryptedKey(config: KeyConfig): Promise<Uint8Array | undefined> {
+  const command = new GetObjectCommand({
+    Bucket: storageConfig.bucket,
+    Key: storageConfig.key,
+  });
+  const client = new S3Client({
+    region: config.region,
+    credentials: {
+      accessKeyId: config.accessKeyId,
+      secretAccessKey: config.secretAccessKey,
+    },
+  });
+  try {
+    const response = await client.send(command);
+    // The Body object also has 'transformToByteArray' and 'transformToWebStream' methods.
+    return response.Body?.transformToByteArray();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(err);
+  }
+}
+
 export function getAwskmsConfig(keys: string[]): KeyConfig[] {
   let configOverride: AwskmsConfig = {};
   if (process.env.AWSKMS_CONFIG) {
@@ -47,28 +69,6 @@ export function getAwskmsConfig(keys: string[]): KeyConfig[] {
 
   return keyConfigs;
 }
-
-export const downloadEncryptedKey = async (config: KeyConfig): Promise<Uint8Array | undefined> => {
-  const command = new GetObjectCommand({
-    Bucket: storageConfig.bucket,
-    Key: storageConfig.key,
-  });
-  const client = new S3Client({
-    region: config.region,
-    credentials: {
-      accessKeyId: config.accessKeyId,
-      secretAccessKey: config.secretAccessKey,
-    },
-  });
-  try {
-    const response = await client.send(command);
-    // The Body object also has 'transformToByteArray' and 'transformToWebStream' methods.
-    return response.Body?.transformToByteArray();
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error(err);
-  }
-};
 
 export async function retrieveAwskmsKeys(awskmsConfigs: KeyConfig[]): Promise<string[]> {
   return await Promise.all(
