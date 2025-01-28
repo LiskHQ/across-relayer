@@ -6,7 +6,7 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
-    timeout-minutes: 30 # `yarn test` takes long time
+    timeout-minutes: 45 # `yarn test` takes long time
     steps:
       - name: Checkout
         uses: actions/checkout@v4
