@@ -90,11 +90,11 @@ export class Relayer {
     const { inventoryClient, tokenClient } = this.clients;
     await tokenClient.update();
 
-    if (this.config.sendingRelaysEnabled) {
+    if (this.config.sendingRelaysEnabled && this.config.sendingTransactionsEnabled) {
       await tokenClient.setOriginTokenApprovals();
     }
 
-    if (this.config.sendingRebalancesEnabled) {
+    if (this.config.sendingRebalancesEnabled && this.config.sendingTransactionsEnabled) {
       await inventoryClient.setL1TokenApprovals();
     }
 
@@ -263,7 +263,7 @@ export class Relayer {
       return ignoreDeposit();
     }
 
-    if (ignoredAddresses?.includes(getAddress(depositor)) || ignoredAddresses?.includes(getAddress(recipient))) {
+    if (ignoredAddresses?.has(getAddress(depositor)) || ignoredAddresses?.has(getAddress(recipient))) {
       this.logger.debug({
         at: "Relayer::filterDeposit",
         message: `Ignoring ${srcChain} deposit destined for ${dstChain}.`,
@@ -324,7 +324,20 @@ export class Relayer {
       return ignoreDeposit();
     }
 
-    const { minConfirmations } = minDepositConfirmations[originChainId].find(({ usdThreshold }) =>
+    // Skip deposits that contain invalid fills from the same relayer. This prevents potential corrupted data from
+    // making the same relayer fill a deposit multiple times.
+    if (!acceptInvalidFills && invalidFills.some((fill) => fill.relayer === this.relayerAddress)) {
+      this.logger.error({
+        at: "Relayer::filterDeposit",
+        message: "👨‍👧‍👦 Skipping deposit with invalid fills from the same relayer",
+        deposit,
+        invalidFills,
+        destinationChainId,
+      });
+      return ignoreDeposit();
+    }
+
+    const { minConfirmations = 100_000 } = minDepositConfirmations[originChainId].find(({ usdThreshold }) =>
       usdThreshold.gte(fillAmountUsd)
     );
     const { latestBlockSearched } = spokePoolClients[originChainId];
@@ -361,19 +374,6 @@ export class Relayer {
     }
 
     if (this.fillIsExclusive(deposit) && getAddress(deposit.exclusiveRelayer) !== this.relayerAddress) {
-      return false;
-    }
-
-    // Skip deposits that contain invalid fills from the same relayer. This prevents potential corrupted data from
-    // making the same relayer fill a deposit multiple times.
-    if (!acceptInvalidFills && invalidFills.some((fill) => fill.relayer === this.relayerAddress)) {
-      this.logger.error({
-        at: "Relayer::filterDeposit",
-        message: "👨‍👧‍👦 Skipping deposit with invalid fills from the same relayer",
-        deposit,
-        invalidFills,
-        destinationChainId,
-      });
       return false;
     }
 
@@ -671,7 +671,7 @@ export class Relayer {
       });
       // If we're in simulation mode, skip this early exit so that the user can evaluate
       // the full simulation run.
-      if (this.config.sendingRelaysEnabled) {
+      if (this.config.sendingTransactionsEnabled) {
         return;
       }
     }
@@ -1044,7 +1044,7 @@ export class Relayer {
     );
 
     const [method, messageModifier, args] = !isDepositSpedUp(deposit)
-      ? ["fillV3Relay", "", [deposit, repaymentChainId]]
+      ? ["fillRelay", "", [convertRelayDataParamsToBytes32(deposit), repaymentChainId, toBytes32(this.relayerAddress)]]
       : [
           "fillRelayWithUpdatedDeposit",
           " with updated parameters ",
