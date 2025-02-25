@@ -26,7 +26,7 @@
     "0x16B840bA01e2b05fc2268eAf6d18892a11EC29D6": {
       "4202": {
         "targetPct": 30,
-        "thresholdPct": 15,
+        "thresholdPct": 20,
         "targetOverageBuffer": 3
       }
     },
