@@ -3,15 +3,13 @@ import { ChildProcess, spawn } from "child_process";
 import { Contract } from "ethers";
 import { clients, utils as sdkUtils } from "@across-protocol/sdk";
 import { Log, DepositWithBlock } from "../interfaces";
-import { CHAIN_MAX_BLOCK_LOOKBACK, RELAYER_DEFAULT_SPOKEPOOL_INDEXER } from "../common/Constants";
+import { CHAIN_MAX_BLOCK_LOOKBACK, RELAYER_DEFAULT_SPOKEPOOL_LISTENER } from "../common/Constants";
 import {
-  bnZero,
   EventSearchConfig,
   getNetworkName,
   isDefined,
   MakeOptional,
   winston,
-  BigNumber,
   getRelayEventKey,
   getMessageHash,
   spreadEventWithBlockNumber,
@@ -71,7 +69,7 @@ export class IndexedSpokePoolClient extends clients.SpokePoolClient {
     super(logger, spokePool, hubPoolClient, chainId, deploymentBlock, eventSearchConfig);
 
     this.chain = getNetworkName(chainId);
-    this.indexerPath = opts.path ?? RELAYER_DEFAULT_SPOKEPOOL_INDEXER;
+    this.indexerPath = opts.path ?? RELAYER_DEFAULT_SPOKEPOOL_LISTENER;
 
     this.pendingBlockNumber = deploymentBlock;
     this.pendingCurrentTime = 0;
@@ -290,20 +288,9 @@ export class IndexedSpokePoolClient extends clients.SpokePoolClient {
       return pendingEvents;
     });
 
-    // Find the latest deposit Ids, and if there are no new events, fall back to already stored values.
-    const fundsDeposited = eventsToQuery.indexOf("FundsDeposited");
-    const _firstDepositId = events[fundsDeposited]?.at(0)?.args?.depositId;
-    const _latestDepositId = events[fundsDeposited]?.at(-1)?.args?.depositId;
-    const [firstDepositId, latestDepositId] = [
-      isDefined(_firstDepositId) ? BigNumber.from(_firstDepositId) : this.getDeposits().at(0)?.depositId ?? bnZero,
-      isDefined(_latestDepositId) ? BigNumber.from(_latestDepositId) : this.getDeposits().at(-1)?.depositId ?? bnZero,
-    ];
-
     return {
       success: true,
       currentTime: this.pendingCurrentTime,
-      firstDepositId,
-      latestDepositId,
       searchEndBlock: this.pendingBlockNumber,
       events,
     };

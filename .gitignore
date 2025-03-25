@@ -19,3 +19,6 @@ dist
 
 # Exclude .env.example
 !.env.example
+
+# Address lists
+addresses.json
