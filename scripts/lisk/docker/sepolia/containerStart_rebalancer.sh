@@ -14,7 +14,7 @@ echo "POLLING_DELAY=0" >> ${env_file}
 
 echo "All env vars are set."
 
-# Restart rebalancer every 5 mins
-sleep 300
+# Restart rebalancer every minute
+sleep 60
 
 node ${app_dir}/dist/index.js --relayer --wallet awskms --keys relayerKey

@@ -54,6 +54,24 @@ services:
     environment:
       - REDIS_URL=redis://redis:6379
 
+  finalizer:
+    container_name: finalizer
+    image: ${AWS_ECR_REGISTRY}/${AWS_ECR_REPOSITORY}:${ACROSS_RELAYER_IMAGE_TAG}
+    platform: linux/amd64
+    depends_on:
+      redis:
+        condition: service_healthy
+      fluent-bit:
+        condition: service_healthy
+    networks:
+      - across_relayer_network
+    restart: always
+    command: ["/bin/sh", "/home/lisk/across-relayer/scripts/${NETWORK:-mainnet}/containerStart_finalizer.sh"]
+    logging:
+      driver: fluentd
+    environment:
+      - REDIS_URL=redis://redis:6379
+
   fluent-bit:
     image: amazon/aws-for-fluent-bit:2.32.2
     container_name: fluent-bit
