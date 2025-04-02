@@ -1,9 +1,9 @@
 diff --git a/docker-compose.yml b/docker-compose.yml
-index c92b5456..3253a2cb 100644
+index 126a9779..663ac8bf 100644
 --- a/docker-compose.yml
 +++ b/docker-compose.yml
 @@ -16,7 +16,8 @@ services:
- 
+
    relayer_1:
      container_name: relayer_1
 -    image: ${AWS_ECR_REGISTRY}/${AWS_ECR_REPOSITORY}:${ACROSS_RELAYER_IMAGE_TAG}
@@ -26,7 +26,7 @@ index c92b5456..3253a2cb 100644
        - REDIS_URL=redis://redis:6379
      ports:
 @@ -38,7 +41,8 @@ services:
- 
+
    rebalancer:
      container_name: rebalancer
 -    image: ${AWS_ECR_REGISTRY}/${AWS_ECR_REPOSITORY}:${ACROSS_RELAYER_IMAGE_TAG}
@@ -35,7 +35,7 @@ index c92b5456..3253a2cb 100644
      platform: linux/amd64
      depends_on:
        redis:
-@@ -48,9 +52,11 @@ services:
+@@ -48,15 +52,18 @@ services:
      networks:
        - across_relayer_network
      restart: always
@@ -47,8 +47,29 @@ index c92b5456..3253a2cb 100644
 +      - ./.aws/credentials:/home/lisk/.aws/credentials
      environment:
        - REDIS_URL=redis://redis:6379
- 
-@@ -61,6 +67,7 @@ services:
+
+   finalizer:
+     container_name: finalizer
+-    image: ${AWS_ECR_REGISTRY}/${AWS_ECR_REPOSITORY}:${ACROSS_RELAYER_IMAGE_TAG}
++    # image: ${AWS_ECR_REGISTRY}/${AWS_ECR_REPOSITORY}:${ACROSS_RELAYER_IMAGE_TAG}
++    build: .
+     platform: linux/amd64
+     depends_on:
+       redis:
+@@ -66,9 +73,11 @@ services:
+     networks:
+       - across_relayer_network
+     restart: always
+-    command: ["/bin/sh", "/home/lisk/across-relayer/scripts/${NETWORK:-mainnet}/containerStart_finalizer.sh"]
++    command: ["/bin/sh", "/home/lisk/across-relayer/scripts/${NETWORK:-sepolia}/containerStart_finalizer.sh"]
+     logging:
+       driver: fluentd
++    volumes:
++      - ./.aws/credentials:/home/lisk/.aws/credentials
+     environment:
+       - REDIS_URL=redis://redis:6379
+
+@@ -79,6 +88,7 @@ services:
        - across_relayer_network
      volumes:
        - ./fluentbit_config:/fluent-bit/etc
