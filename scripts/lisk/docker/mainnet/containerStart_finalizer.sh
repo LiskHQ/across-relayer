@@ -33,7 +33,8 @@ echo "POLLING_DELAY=0" >> ${env_file}
 
 echo "All env vars are set."
 
-# Restart finalizer every 6 hrs
-sleep 21600000
+# Restart finalizer after the set interval
+FINALIZER_RESTART_INTERVAL_SECONDS=`echo $RELAYER_CONFIG | jq -r ."FINALIZER_RESTART_INTERVAL_SECONDS"`
+sleep $((FINALIZER_RESTART_INTERVAL_SECONDS))
 
 node ${app_dir}/dist/index.js --finalizer --wallet awskms --keys relayerKey
