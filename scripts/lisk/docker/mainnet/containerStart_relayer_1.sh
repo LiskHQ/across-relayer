@@ -18,7 +18,7 @@ echo "SEND_RELAYS=true" >> ${env_file}
 echo "SEND_REBALANCES=false"  >> ${env_file}
 
 # Enable debug logs
-echo "DEBUG_PROFITABILITY=true" >> ${env_file}
+echo "DEBUG_PROFITABILITY=false" >> ${env_file}
 
 echo "All env vars are set."
 
