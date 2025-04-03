@@ -1,4 +1,6 @@
 #!/bin/bash
+set -eu
+
 app_dir=/home/lisk/across-relayer
 cd $app_dir
 echo "Current DIR: $PWD"

@@ -1,4 +1,5 @@
 #!/bin/bash
+set -eu
 
 . $(dirname $(realpath "$0"))/sourceCommonEnv.sh
 
