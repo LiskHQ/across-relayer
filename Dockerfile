@@ -30,3 +30,5 @@ COPY --chown=lisk:lisk --from=builder /home/builder/build/node_modules/ ./node_m
 COPY --chown=lisk:lisk --from=builder /home/builder/build/dist/ ./dist/
 COPY --chown=lisk:lisk --from=builder /home/builder/build/config/ ./config/
 COPY --chown=lisk:lisk --from=builder /home/builder/build/scripts/lisk/docker/ ./scripts/
+
+COPY --chown=lisk:lisk --from=builder /home/builder/build/addresses.json ./addresses.json

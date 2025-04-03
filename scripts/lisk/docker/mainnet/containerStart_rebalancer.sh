@@ -1,8 +1,9 @@
 #!/bin/bash
+set -eu
 
 . $(dirname $(realpath "$0"))/sourceCommonEnv.sh
 
-# Override SLACK_CONFIG for rebalancer to avoid noise on Slack due to the frequent restarts (every 6 secs)
+# Override SLACK_CONFIG for rebalancer to avoid noise on Slack due to the frequent restarts
 echo "SLACK_CONFIG=" >> ${env_file}
 
 # Set the bot identifier
@@ -17,7 +18,8 @@ echo "POLLING_DELAY=0" >> ${env_file}
 
 echo "All env vars are set."
 
-# Restart rebalancer every 5 mins
-sleep 300
+# Restart rebalancer after the set interval
+REBALANCER_RESTART_INTERVAL_SECONDS=`echo $RELAYER_CONFIG | jq -r ."REBALANCER_RESTART_INTERVAL_SECONDS"`
+sleep $((REBALANCER_RESTART_INTERVAL_SECONDS))
 
 node ${app_dir}/dist/index.js --relayer --wallet awskms --keys relayerKey
