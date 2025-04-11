@@ -63,8 +63,8 @@ echo "PRIORITY_FEE_SCALER_11155111=0.8"  >> ${env_file}
 echo "RELAYER_GAS_PADDING=0"  >> ${env_file}
 
 # Supported token settings
-# Use only WETH until Across adds rebalancer support for LSK and USDT on Sepolia
-# echo RELAYER_TOKENS=\'[\"0x16B840bA01e2b05fc2268eAf6d18892a11EC29D6\", \"0xaA8E23Fb1079EA71e0a56F48a2aA51851D8433D0\", \"0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14\"]\'  >> ${env_file}
+# Use only WETH until Across adds rebalancer support for LSK on Sepolia
+# echo RELAYER_TOKENS=\'[\"0x16B840bA01e2b05fc2268eAf6d18892a11EC29D6\", \"0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14\"]\'  >> ${env_file}
 echo RELAYER_TOKENS=\'[\"0xfFf9976782d46CC05630D1f6eBAb18b2324d6B14\"]\'  >> ${env_file}
 echo MIN_DEPOSIT_CONFIRMATIONS=\'{ \"1000000\": { \"919\": 1, \"4202\": 1, \"80002\": 1, \"84532\": 1, \"421614\": 1, \"11155111\": 1, \"11155420\": 1 } }\' >> ${env_file}
 echo RELAYER_EXTERNAL_INVENTORY_CONFIG=\'/home/lisk/across-relayer/config/sepolia/relayerExternalInventory.json\' >> ${env_file}
