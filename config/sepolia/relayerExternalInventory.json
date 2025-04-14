@@ -18,9 +18,10 @@
       "4202": {
         "targetPct": 30,
         "thresholdPct": 10,
-        "targetOverageBuffer": 1.5,
+        "targetOverageBuffer": 1.8,
         "unwrapWethThreshold": 0.025,
-        "unwrapWethTarget": 0.1
+        "unwrapWethTarget": 0.1,
+        "withdrawExcessPeriod": 129600
       }
     }
   }
