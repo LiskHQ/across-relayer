@@ -12,6 +12,7 @@ gasReporterOutput.json
 deployments/mainnet/.chainId
 src/monitor/.env.sample
 Dockerfile
+addresses.json
 
 # project specific paths
 dist/

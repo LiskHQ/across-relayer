@@ -4,7 +4,6 @@ import {
   Contract,
   createFormatFunction,
   EventSearchConfig,
-  getL1TokenInfo,
   getNetworkName,
   isDefined,
   Provider,
@@ -25,9 +24,11 @@ import ERC20_ABI from "../../common/abi/MinimalERC20.json";
 import { AugmentedTransaction } from "../../clients/TransactionClient";
 
 export class BinanceCEXBridge extends BaseL2BridgeAdapter {
-  private readonly binanceApiClient;
+  // Store the promise to be evaluated when needed so that we can construct the bridge synchronously.
+  protected readonly binanceApiClientPromise;
+  protected binanceApiClient;
   // Store the token info for the bridge so we can reference the L1 decimals and L1 token symbol.
-  private readonly l1TokenInfo: L1Token;
+  protected l1TokenInfo: L1Token;
 
   constructor(
     l2chainId: number,
@@ -43,9 +44,13 @@ export class BinanceCEXBridge extends BaseL2BridgeAdapter {
 
     const l2Token = getTranslatedTokenAddress(l1Token.toAddress(), hubChainId, l2chainId);
     this.l2Bridge = new Contract(l2Token, ERC20_ABI, l2Signer);
-    this.l1TokenInfo = getTokenInfo(l1Token.toAddress(), hubChainId);
+    const l1TokenInfo = getTokenInfo(l1Token.toAddress(), hubChainId);
+    this.l1TokenInfo = {
+      ...l1TokenInfo,
+      symbol: l1TokenInfo.symbol === "WETH" ? "ETH" : l1TokenInfo.symbol,
+    };
 
-    this.binanceApiClient = getBinanceApiClient(process.env["BINANCE_API_BASE"]);
+    this.binanceApiClientPromise = getBinanceApiClient(process.env["BINANCE_API_BASE"]);
   }
 
   async constructWithdrawToL1Txns(
@@ -54,9 +59,9 @@ export class BinanceCEXBridge extends BaseL2BridgeAdapter {
     _l1Token: EvmAddress,
     amount: BigNumber
   ): Promise<AugmentedTransaction[]> {
-    // getL1TokenInfo is a misnomer here since we need to get the USDC-BNB token info which is defined to have 18 decimals.
-    const l2TokenInfo = getL1TokenInfo(l2Token.toAddress(), this.l2chainId);
-    const depositAddress = await this.binanceApiClient.depositAddress({
+    const binanceApiClient = await this.getBinanceClient();
+    const l2TokenInfo = getTokenInfo(l2Token.toAddress(), this.l2chainId);
+    const depositAddress = await binanceApiClient.depositAddress({
       coin: this.l1TokenInfo.symbol,
       network: "BSC",
     });
@@ -86,14 +91,15 @@ export class BinanceCEXBridge extends BaseL2BridgeAdapter {
     fromAddress: EvmAddress,
     l2Token: EvmAddress
   ): Promise<BigNumber> {
-    const l2TokenInfo = getL1TokenInfo(l2Token.toAddress(), this.l2chainId);
+    const binanceApiClient = await this.getBinanceClient();
+    const l2TokenInfo = getTokenInfo(l2Token.toAddress(), this.l2chainId);
     const fromTimestamp = (await getTimestampForBlock(this.l2Bridge.provider, l2EventConfig.fromBlock)) * 1_000;
     const [_depositHistory, _withdrawHistory] = await Promise.all([
-      this.binanceApiClient.depositHistory({
+      binanceApiClient.depositHistory({
         coin: this.l1TokenInfo.symbol,
         startTime: fromTimestamp,
       }),
-      this.binanceApiClient.withdrawHistory({
+      binanceApiClient.withdrawHistory({
         coin: this.l1TokenInfo.symbol,
         startTime: fromTimestamp,
       }),
@@ -132,5 +138,9 @@ export class BinanceCEXBridge extends BaseL2BridgeAdapter {
     );
     const diff = totalDepositAmountForAddress.sub(totalWithdrawalAmountForAddress);
     return diff.gt(bnZero) ? diff : bnZero;
+  }
+
+  protected async getBinanceClient() {
+    return (this.binanceApiClient ??= await this.binanceApiClientPromise);
   }
 }
