@@ -1,6 +1,7 @@
 import * as sdk from "@across-protocol/sdk";
 
-export class BlockFinder extends sdk.utils.BlockFinder {}
+// EVMBlockFinder returns _only_ EVMBlock types.
+export class EVMBlockFinder extends sdk.arch.evm.EVMBlockFinder {}
 export type BlockFinderHints = sdk.utils.BlockFinderHints;
 
 export class AddressAggregator extends sdk.addressAggregator.AddressAggregator {}
@@ -8,11 +9,15 @@ export const addressAdapters = sdk.addressAggregator.adapters;
 
 export class PriceClient extends sdk.priceClient.PriceClient {}
 export const { acrossApi, coingecko, defiLlama } = sdk.priceClient.adapters;
+export const { isEVMSpokePoolClient, isSVMSpokePoolClient } = sdk.clients;
 
 export class Address extends sdk.utils.Address {}
 export class EvmAddress extends sdk.utils.EvmAddress {}
 export class SvmAddress extends sdk.utils.SvmAddress {}
 
+export type EvmGasPriceEstimate = sdk.gasPriceOracle.EvmGasPriceEstimate;
+
+export type SVMProvider = sdk.arch.svm.SVMProvider;
 export const { fillStatusArray, populateV3Relay, relayFillStatus, getTimestampForBlock } = sdk.arch.evm;
 
 export const {
@@ -22,7 +27,6 @@ export const {
   groupObjectCountsByThreeProps,
   delay,
   getCurrentTime,
-  averageBlockTime,
   bnZero,
   bnOne,
   bnUint32Max,

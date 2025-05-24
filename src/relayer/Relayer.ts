@@ -1,10 +1,9 @@
 import assert from "assert";
-import { utils as sdkUtils } from "@across-protocol/sdk";
+import { utils as sdkUtils, arch } from "@across-protocol/sdk";
 import { utils as ethersUtils } from "ethers";
 import { FillStatus, Deposit, DepositWithBlock } from "../interfaces";
 import { updateSpokePoolClients } from "../common";
 import {
-  averageBlockTime,
   BigNumber,
   bnZero,
   bnUint256Max,
@@ -23,6 +22,8 @@ import {
   formatGwei,
   toBytes32,
   depositForcesOriginChainRepayment,
+  isEVMSpokePoolClient,
+  isSVMSpokePoolClient,
 } from "../utils";
 import { RelayerClients } from "./RelayerClientHelper";
 import { RelayerConfig } from "./RelayerConfig";
@@ -132,7 +133,7 @@ export class Relayer {
       tokenClient.clearTokenData();
 
       await configStoreClient.update();
-      if (configStoreClient.latestBlockSearched > hubPoolClient.latestBlockSearched) {
+      if (configStoreClient.latestHeightSearched > hubPoolClient.latestHeightSearched) {
         await hubPoolClient.update();
       }
     }
@@ -362,14 +363,14 @@ export class Relayer {
     const { minConfirmations } = minDepositConfirmations[originChainId].find(({ usdThreshold }) =>
       usdThreshold.gte(fillAmountUsd)
     ) ?? { minConfirmations: 100_000 };
-    const { latestBlockSearched } = spokePoolClients[originChainId];
-    if (latestBlockSearched - blockNumber < minConfirmations) {
+    const { latestHeightSearched } = spokePoolClients[originChainId];
+    if (latestHeightSearched - blockNumber < minConfirmations) {
       this.logger.debug({
         at: "Relayer::filterDeposit",
         message: `Skipping ${srcChain} deposit due to insufficient deposit confirmations.`,
         depositId: depositId.toString(),
         blockNumber,
-        confirmations: latestBlockSearched - blockNumber,
+        confirmations: latestHeightSearched - blockNumber,
         minConfirmations,
         txnRef: deposit.txnRef,
       });
@@ -545,7 +546,7 @@ export class Relayer {
     const originSpoke = this.clients.spokePoolClients[chainId];
 
     let totalCommitment = bnZero;
-    let toBlock = originSpoke.latestBlockSearched;
+    let toBlock = originSpoke.latestHeightSearched;
 
     // For each deposit confirmation tier (lookback), sum all outstanding commitments back to head.
     const limits = mdcs.map(({ usdThreshold, minConfirmations }) => {
@@ -571,7 +572,7 @@ export class Relayer {
           overCommitment: limit.abs(),
           usdThreshold: mdcs[i].usdThreshold,
           fromBlock,
-          toBlock: originSpoke.latestBlockSearched,
+          toBlock: originSpoke.latestHeightSearched,
         });
         break;
       }
@@ -711,8 +712,15 @@ export class Relayer {
     const minFillTime = this.config.minFillTime?.[destinationChainId] ?? 0;
     if (minFillTime > 0 && deposit.exclusiveRelayer !== this.relayerAddress) {
       const originSpoke = spokePoolClients[originChainId];
-      const { average: avgBlockTime } = await averageBlockTime(originSpoke.spokePool.provider);
-      const depositAge = Math.floor(avgBlockTime * (originSpoke.latestBlockSearched - deposit.blockNumber));
+      let avgBlockTime;
+      if (isEVMSpokePoolClient(originSpoke)) {
+        const { average } = await arch.evm.averageBlockTime(originSpoke.spokePool.provider);
+        avgBlockTime = average;
+      } else if (isSVMSpokePoolClient(originSpoke)) {
+        const { average } = await arch.svm.averageBlockTime();
+        avgBlockTime = average;
+      }
+      const depositAge = Math.floor(avgBlockTime * (originSpoke.latestHeightSearched - deposit.blockNumber));
 
       if (minFillTime > depositAge) {
         this.logger.debug({
@@ -892,7 +900,7 @@ export class Relayer {
 
     // Fetch the average block time for mainnet, for later use in evaluating quoteTimestamps.
     this.hubPoolBlockBuffer ??= Math.ceil(
-      HUB_SPOKE_BLOCK_LAG * (await sdkUtils.averageBlockTime(hubPoolClient.hubPool.provider)).average
+      HUB_SPOKE_BLOCK_LAG * (await arch.evm.averageBlockTime(hubPoolClient.hubPool.provider)).average
     );
 
     // Flush any pre-existing enqueued transactions that might not have been executed.
@@ -945,9 +953,9 @@ export class Relayer {
 
       const mdcPerChain = this.computeRequiredDepositConfirmations(unfilledDeposits, destinationChainId);
       const maxBlockNumbers = Object.fromEntries(
-        Object.values(spokePoolClients).map(({ chainId, latestBlockSearched }) => [
+        Object.values(spokePoolClients).map(({ chainId, latestHeightSearched }) => [
           chainId,
-          latestBlockSearched - mdcPerChain[chainId],
+          latestHeightSearched - mdcPerChain[chainId],
         ])
       );
       await this.evaluateFills(unfilledDeposits, lpFees, maxBlockNumbers, sendSlowRelays);
@@ -1030,15 +1038,16 @@ export class Relayer {
     };
 
     this.logger.debug({ at: "Relayer::requestSlowFill", message: "Enqueuing slow fill request.", deposit });
-    multiCallerClient.enqueueTransaction({
-      chainId: destinationChainId,
-      contract: spokePoolClient.spokePool,
-      method: "requestSlowFill",
-      args: [convertRelayDataParamsToBytes32(deposit)],
-      message: "Requested slow fill for deposit.",
-      mrkdwn: formatSlowFillRequestMarkdown(),
-    });
-
+    if (isEVMSpokePoolClient(spokePoolClient)) {
+      multiCallerClient.enqueueTransaction({
+        chainId: destinationChainId,
+        contract: spokePoolClient.spokePool,
+        method: "requestSlowFill",
+        args: [convertRelayDataParamsToBytes32(deposit)],
+        message: "Requested slow fill for deposit.",
+        mrkdwn: formatSlowFillRequestMarkdown(),
+      });
+    }
     this.setFillStatus(deposit, FillStatus.RequestedSlowFill);
   }
 
@@ -1073,28 +1082,36 @@ export class Relayer {
       realizedLpFeePct,
     });
 
-    const [method, messageModifier, args] = !isDepositSpedUp(deposit)
-      ? ["fillRelay", "", [convertRelayDataParamsToBytes32(deposit), repaymentChainId, toBytes32(this.relayerAddress)]]
-      : [
-          "fillRelayWithUpdatedDeposit",
-          " with updated parameters ",
-          [
-            convertRelayDataParamsToBytes32(deposit),
-            repaymentChainId,
-            toBytes32(this.relayerAddress),
-            deposit.updatedOutputAmount,
-            toBytes32(deposit.updatedRecipient),
-            deposit.updatedMessage,
-            deposit.speedUpSignature,
-          ],
-        ];
+    const spokePoolClient = spokePoolClients[deposit.destinationChainId];
+    if (isEVMSpokePoolClient(spokePoolClient)) {
+      const [method, messageModifier, args] = !isDepositSpedUp(deposit)
+        ? [
+            "fillRelay",
+            "",
+            [convertRelayDataParamsToBytes32(deposit), repaymentChainId, toBytes32(this.relayerAddress)],
+          ]
+        : [
+            "fillRelayWithUpdatedDeposit",
+            " with updated parameters ",
+            [
+              convertRelayDataParamsToBytes32(deposit),
+              repaymentChainId,
+              toBytes32(this.relayerAddress),
+              deposit.updatedOutputAmount,
+              toBytes32(deposit.updatedRecipient),
+              deposit.updatedMessage,
+              deposit.speedUpSignature,
+            ],
+          ];
 
-    const message = `Filled v3 deposit ${messageModifier}🚀`;
-    const mrkdwn = this.constructRelayFilledMrkdwn(deposit, repaymentChainId, realizedLpFeePct, gasPrice);
-    const contract = spokePoolClients[deposit.destinationChainId].spokePool;
-    const chainId = deposit.destinationChainId;
-    const multiCallerClient = this.getMulticaller(chainId);
-    multiCallerClient.enqueueTransaction({ contract, chainId, method, args, gasLimit, message, mrkdwn });
+      const message = `Filled v3 deposit ${messageModifier}🚀`;
+      const mrkdwn = this.constructRelayFilledMrkdwn(deposit, repaymentChainId, realizedLpFeePct, gasPrice);
+
+      const contract = spokePoolClient.spokePool;
+      const chainId = deposit.destinationChainId;
+      const multiCallerClient = this.getMulticaller(chainId);
+      multiCallerClient.enqueueTransaction({ contract, chainId, method, args, gasLimit, message, mrkdwn });
+    }
 
     this.setFillStatus(deposit, FillStatus.Filled);
   }

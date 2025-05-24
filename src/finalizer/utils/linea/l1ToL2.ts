@@ -13,6 +13,8 @@ import {
   ethers,
   BigNumber,
   getTokenInfo,
+  assert,
+  isEVMSpokePoolClient,
 } from "../../../utils";
 import { CrossChainMessage, FinalizerPromise } from "../../types";
 import {
@@ -50,6 +52,7 @@ export async function lineaL1ToL2Finalizer(
   l1SpokePoolClient: SpokePoolClient,
   senderAddresses: string[]
 ): Promise<FinalizerPromise> {
+  assert(isEVMSpokePoolClient(l1SpokePoolClient) && isEVMSpokePoolClient(l2SpokePoolClient));
   const [l1ChainId] = [hubPoolClient.chainId, hubPoolClient.hubPool.address];
   if (l1ChainId !== CHAIN_IDs.MAINNET) {
     throw new Error("Finalizations for Linea testnet is not supported.");
@@ -64,9 +67,9 @@ export async function lineaL1ToL2Finalizer(
     hubPoolClient.hubPool.provider
   );
   const searchConfig: EventSearchConfig = {
-    fromBlock: l1SpokePoolClient.eventSearchConfig.fromBlock,
-    toBlock: l1SpokePoolClient.latestBlockSearched,
-    maxBlockLookBack: l1SpokePoolClient.eventSearchConfig.maxBlockLookBack,
+    from: l1SpokePoolClient.eventSearchConfig.from,
+    to: l1SpokePoolClient.latestHeightSearched,
+    maxLookBack: l1SpokePoolClient.eventSearchConfig.maxLookBack,
   };
 
   const [wethAndRelayEvents, tokenBridgeEvents] = await Promise.all([
