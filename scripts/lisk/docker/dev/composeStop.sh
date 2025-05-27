@@ -5,7 +5,7 @@ set -eu
 
 . scripts/lisk/docker/dev/setEnvVariables.sh
 
-docker compose down --rmi all
+COMPOSE_BAKE=true docker compose down --rmi all
 
 git apply -R scripts/lisk/docker/dev/docker-compose-dev.patch
 rm -rf $PWD/.aws
