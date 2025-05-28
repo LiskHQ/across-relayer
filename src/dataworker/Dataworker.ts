@@ -20,6 +20,8 @@ import {
   _buildPoolRebalanceRoot,
   ERC20,
   getTokenInfo,
+  isEVMSpokePoolClient,
+  isSVMSpokePoolClient,
 } from "../utils";
 import {
   ProposedRootBundle,
@@ -220,7 +222,7 @@ export class Dataworker {
     // are executed so we want to make sure that these are all older than the mainnet bundle end block which is
     // sometimes treated as the "latest" mainnet block.
     const mostRecentProposedRootBundle = this.clients.hubPoolClient.getLatestFullyExecutedRootBundle(
-      this.clients.hubPoolClient.latestBlockSearched
+      this.clients.hubPoolClient.latestHeightSearched
     );
 
     // If there has never been a validated root bundle, then we can always propose a new one:
@@ -344,7 +346,7 @@ export class Dataworker {
     const hubPoolClient = this.clients.hubPoolClient;
     return hubPoolClient.getNextBundleStartBlockNumber(
       chainIdList,
-      hubPoolClient.latestBlockSearched,
+      hubPoolClient.latestHeightSearched,
       hubPoolClient.chainId
     );
   }
@@ -372,7 +374,7 @@ export class Dataworker {
       return;
     }
 
-    const { chainId: hubPoolChainId, latestBlockSearched } = this.clients.hubPoolClient;
+    const { chainId: hubPoolChainId, latestHeightSearched } = this.clients.hubPoolClient;
     const mainnetBundleEndBlock = blockRangesForProposal[0][1];
 
     this.logger.debug({
@@ -384,7 +386,7 @@ export class Dataworker {
     const rootBundleData = await this._proposeRootBundle(
       blockRangesForProposal,
       spokePoolClients,
-      latestBlockSearched,
+      latestHeightSearched,
       false, // Don't load data from arweave when proposing.
       logData
     );
@@ -1020,7 +1022,7 @@ export class Dataworker {
       Object.entries(spokePoolClients).map(async ([_chainId, client]) => {
         const chainId = Number(_chainId);
         let rootBundleRelays = sortEventsDescending(client.getRootBundleRelays()).filter(
-          (rootBundle) => rootBundle.blockNumber >= client.eventSearchConfig.fromBlock
+          (rootBundle) => rootBundle.blockNumber >= client.eventSearchConfig.from
         );
 
         // Filter out roots that are not in the latest N root bundles. This assumes that
@@ -1044,7 +1046,7 @@ export class Dataworker {
 
             const followingBlockNumber =
               this.clients.hubPoolClient.getFollowingRootBundle(bundle)?.blockNumber ||
-              this.clients.hubPoolClient.latestBlockSearched;
+              this.clients.hubPoolClient.latestHeightSearched;
 
             if (!followingBlockNumber) {
               return false;
@@ -1232,7 +1234,7 @@ export class Dataworker {
           // @dev check if there's been a duplicate leaf execution and if so, then exit early.
           // Since this function is happening near the end of the dataworker run and leaf executions are
           // relatively infrequent, the additional RPC latency and cost is acceptable.
-          const fillStatus = await client.relayFillStatus(slowFill.relayData, "latest");
+          const fillStatus = await client.relayFillStatus(slowFill.relayData);
           if (fillStatus === FillStatus.Filled) {
             this.logger.debug({
               at: "Dataworker#executeSlowRelayLeaves",
@@ -1254,7 +1256,7 @@ export class Dataworker {
           const success = await balanceAllocator.requestBalanceAllocation(
             destinationChainId,
             l2TokensToCountTowardsSpokePoolLeafExecutionCapital(outputToken, destinationChainId),
-            client.spokePool.address,
+            client.spokePoolAddress.toEvmAddress(),
             amountRequired
           );
 
@@ -1273,7 +1275,7 @@ export class Dataworker {
                 balanceAllocator,
                 destinationChainId,
                 outputToken,
-                client.spokePool.address
+                client.spokePoolAddress.toEvmAddress()
               ),
             });
           }
@@ -1300,6 +1302,7 @@ export class Dataworker {
         `amount: ${outputAmount.toString()}`;
 
       if (submitExecution) {
+        assert(isEVMSpokePoolClient(client));
         const { method, args } = this.encodeSlowFillLeaf(slowRelayTree, rootBundleId, leaf);
 
         this.clients.multiCallerClient.enqueueTransaction({
@@ -1456,7 +1459,7 @@ export class Dataworker {
 
     const executedLeaves = this.clients.hubPoolClient.getExecutedLeavesForRootBundle(
       this.clients.hubPoolClient.getLatestProposedRootBundle(),
-      this.clients.hubPoolClient.latestBlockSearched
+      this.clients.hubPoolClient.latestHeightSearched
     );
 
     // Filter out previously executed leaves.
@@ -1742,7 +1745,7 @@ export class Dataworker {
             balanceAllocator.addUsed(
               leaf.chainId,
               leaf.l1Tokens[i],
-              spokePoolClients[leaf.chainId].spokePool.address,
+              spokePoolClients[leaf.chainId].spokePoolAddress.toEvmAddress(),
               amount.mul(-1)
             );
           }
@@ -2071,7 +2074,7 @@ export class Dataworker {
     for (const [_chainId, client] of Object.entries(spokePoolClients)) {
       const chainId = Number(_chainId);
       let rootBundleRelays = sortEventsDescending(client.getRootBundleRelays()).filter(
-        (rootBundle) => rootBundle.blockNumber >= client.eventSearchConfig.fromBlock
+        (rootBundle) => rootBundle.blockNumber >= client.eventSearchConfig.from
       );
 
       // Filter out roots that are not in the latest N root bundles. This assumes that
@@ -2094,7 +2097,7 @@ export class Dataworker {
             return false;
           }
           const followingBlockNumber =
-            hubPoolClient.getFollowingRootBundle(bundle)?.blockNumber || hubPoolClient.latestBlockSearched;
+            hubPoolClient.getFollowingRootBundle(bundle)?.blockNumber || hubPoolClient.latestHeightSearched;
 
           if (followingBlockNumber === undefined) {
             return false;
@@ -2224,6 +2227,9 @@ export class Dataworker {
           if (leaf.chainId !== chainId) {
             throw new Error("Leaf chainId does not match input chainId");
           }
+          if (!isEVMSpokePoolClient(client)) {
+            throw new Error("Dataworker does not support non-evm chains");
+          }
           const symbol = this.getTokenInfo(leaf.l2TokenAddress, chainId);
           // @dev check if there's been a duplicate leaf execution and if so, then exit early.
           // Since this function is happening near the end of the dataworker run and leaf executions are
@@ -2237,9 +2243,9 @@ export class Dataworker {
             leaf.leafId
           );
           const searchConfig = {
-            maxBlockLookBack: client.eventSearchConfig.maxBlockLookBack,
-            fromBlock: client.latestBlockSearched - client.eventSearchConfig.maxBlockLookBack,
-            toBlock: await client.spokePool.provider.getBlockNumber(),
+            maxLookBack: client.eventSearchConfig.maxLookBack,
+            from: client.latestHeightSearched - client.eventSearchConfig.maxLookBack,
+            to: await client.spokePool.provider.getBlockNumber(),
           };
           const duplicateEvents = await sdkUtils.paginatedEventQuery(client.spokePool, eventFilter, searchConfig);
           if (duplicateEvents.length > 0) {
@@ -2256,7 +2262,7 @@ export class Dataworker {
             {
               chainId: leaf.chainId,
               tokens: l2TokensToCountTowardsSpokePoolLeafExecutionCapital(leaf.l2TokenAddress, leaf.chainId),
-              holder: client.spokePool.address,
+              holder: client.spokePoolAddress.toEvmAddress(),
               amount: totalSent,
             },
           ];
@@ -2265,7 +2271,7 @@ export class Dataworker {
           // If we have to pass ETH via the payable function, then we need to add a balance request for the signer
           // to ensure that it has enough ETH to send.
           // NOTE: this is ETH required separately from the amount required to send the tokens
-          if (isDefined(valueToPassViaPayable)) {
+          if (isDefined(valueToPassViaPayable) && isEVMSpokePoolClient(client)) {
             balanceRequestsToQuery.push({
               chainId: leaf.chainId,
               tokens: [ZERO_ADDRESS], // ZERO_ADDRESS is used to represent ETH.
@@ -2289,16 +2295,9 @@ export class Dataworker {
                 balanceAllocator,
                 leaf.chainId,
                 leaf.l2TokenAddress,
-                client.spokePool.address
+                client.spokePoolAddress.toEvmAddress()
               ),
               requiredEthValue: valueToPassViaPayable,
-              senderEthValue:
-                valueToPassViaPayable &&
-                (await balanceAllocator.getBalanceSubUsed(
-                  leaf.chainId,
-                  ZERO_ADDRESS,
-                  await client.spokePool.signer.getAddress()
-                )),
             });
           } else {
             // If mainnet leaf, then allocate balance to the HubPool since it will be atomically transferred.
@@ -2324,22 +2323,26 @@ export class Dataworker {
         leaf.leafId
       }\nchainId: ${chainId}\ntoken: ${symbol}\namount: ${leaf.amountToReturn.toString()}`;
       if (submitExecution) {
-        const valueToPassViaPayable = getMsgValue(leaf);
-        this.clients.multiCallerClient.enqueueTransaction({
-          value: valueToPassViaPayable,
-          contract: client.spokePool,
-          chainId: Number(chainId),
-          method: "executeRelayerRefundLeaf",
-          args: [rootBundleId, leaf, relayerRefundTree.getHexProof(leaf)],
-          message: "Executed RelayerRefundLeaf 🌿!",
-          mrkdwn,
-          // If mainnet, send through Multicall3 so it can be batched with PoolRebalanceLeaf executions, otherwise
-          // SpokePool.multicall() is fine.
-          unpermissioned: Number(chainId) === this.clients.hubPoolClient.chainId,
-          // If simulating mainnet execution, can fail as it may require funds to be sent from
-          // pool rebalance leaf.
-          canFailInSimulation: leaf.chainId === this.clients.hubPoolClient.chainId,
-        });
+        if (isEVMSpokePoolClient(client)) {
+          const valueToPassViaPayable = getMsgValue(leaf);
+          this.clients.multiCallerClient.enqueueTransaction({
+            value: valueToPassViaPayable,
+            contract: client.spokePool,
+            chainId: Number(chainId),
+            method: "executeRelayerRefundLeaf",
+            args: [rootBundleId, leaf, relayerRefundTree.getHexProof(leaf)],
+            message: "Executed RelayerRefundLeaf 🌿!",
+            mrkdwn,
+            // If mainnet, send through Multicall3 so it can be batched with PoolRebalanceLeaf executions, otherwise
+            // SpokePool.multicall() is fine.
+            unpermissioned: Number(chainId) === this.clients.hubPoolClient.chainId,
+            // If simulating mainnet execution, can fail as it may require funds to be sent from
+            // pool rebalance leaf.
+            canFailInSimulation: leaf.chainId === this.clients.hubPoolClient.chainId,
+          });
+        } else if (isSVMSpokePoolClient(client)) {
+          throw new Error("Not implemented");
+        }
       } else {
         this.logger.debug({ at: "Dataworker#_executeRelayerRefundLeaves", message: mrkdwn });
       }
@@ -2521,7 +2524,10 @@ export class Dataworker {
    */
   _getRequiredEthForLineaRelayLeafExecution(client: SpokePoolClient): Promise<BigNumber> {
     // You should *only* call this method on Linea chains.
-    assert(sdkUtils.chainIsLinea(client.chainId), "This method should only be called on Linea chains!");
+    assert(
+      sdkUtils.chainIsLinea(client.chainId) && isEVMSpokePoolClient(client),
+      "This method should only be called on Linea chains!"
+    );
     // Resolve and sanitize the L2MessageService contract ABI and address.
     const l2MessageABI = CONTRACT_ADDRESSES[client.chainId]?.l2MessageService?.abi;
     const l2MessageAddress = CONTRACT_ADDRESSES[client.chainId]?.l2MessageService?.address;
@@ -2573,7 +2579,7 @@ export class Dataworker {
       spokePoolClients,
       getEndBlockBuffers(chainIds, this.blockRangeEndBlockBuffer),
       this.clients,
-      this.clients.hubPoolClient.latestBlockSearched,
+      this.clients.hubPoolClient.latestHeightSearched,
       // We only want to count enabled chains at the same time that we are loading chain ID indices.
       this.clients.configStoreClient.getEnabledChains(mainnetBundleStartBlock)
     );

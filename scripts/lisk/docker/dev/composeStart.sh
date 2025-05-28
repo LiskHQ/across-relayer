@@ -14,4 +14,4 @@ mkdir -p $PWD/.aws
 cp $HOME/.aws/credentials $PWD/.aws/
 git apply scripts/lisk/docker/dev/docker-compose-dev.patch
 
-docker compose up --pull always --build --detach
+COMPOSE_BAKE=true docker compose up --pull always --build --detach

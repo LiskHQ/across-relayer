@@ -29,6 +29,7 @@ import {
   depositForcesOriginChainRepayment,
   getRemoteTokenForL1Token,
   getTokenInfo,
+  isEVMSpokePoolClient,
 } from "../utils";
 import { HubPoolClient, TokenClient, BundleDataClient } from ".";
 import { Deposit, ProposedRootBundle } from "../interfaces";
@@ -435,7 +436,7 @@ export class InventoryClient {
     if (depositForcesOriginChainRepayment(deposit, this.hubPoolClient)) {
       return false;
     }
-    const hubPoolBlock = this.hubPoolClient.latestBlockSearched;
+    const hubPoolBlock = this.hubPoolClient.latestHeightSearched;
     if (!this.hubPoolClient.l2TokenHasPoolRebalanceRoute(deposit.inputToken, deposit.originChainId, hubPoolBlock)) {
       return false;
     }
@@ -705,7 +706,7 @@ export class InventoryClient {
 
         // We need to find the latest validated running balance for this chain and token.
         const lastValidatedRunningBalance = this.hubPoolClient.getRunningBalanceBeforeBlockForChain(
-          this.hubPoolClient.latestBlockSearched,
+          this.hubPoolClient.latestHeightSearched,
           chainId,
           l1Token
         ).runningBalance;
@@ -714,7 +715,7 @@ export class InventoryClient {
         // - minus total deposit amount on chain since the latest validated end block
         // - plus total refund amount on chain since the latest validated end block
         const latestValidatedBundle = this.hubPoolClient.getLatestExecutedRootBundleContainingL1Token(
-          this.hubPoolClient.latestBlockSearched,
+          this.hubPoolClient.latestHeightSearched,
           chainId,
           l1Token
         );
@@ -1119,12 +1120,14 @@ export class InventoryClient {
           // This filters out all nulls, which removes any chains that are meant to be ignored.
           .filter(isDefined)
           // This map adds the ETH balance to the object.
-          .map(async (chainInfo) => ({
-            ...chainInfo,
-            balance: await this.tokenClient.spokePoolClients[chainInfo.chainId].spokePool.provider.getBalance(
-              this.relayer
-            ),
-          }))
+          .map(async (chainInfo) => {
+            const spokePoolClient = this.tokenClient.spokePoolClients[chainInfo.chainId];
+            assert(isEVMSpokePoolClient(spokePoolClient));
+            return {
+              ...chainInfo,
+              balance: await spokePoolClient.spokePool.provider.getBalance(this.relayer),
+            };
+          })
       );
 
       this.log("Checking WETH unwrap thresholds for chains with thresholds set", { chains });
@@ -1455,7 +1458,9 @@ export class InventoryClient {
   }
 
   _unwrapWeth(chainId: number, _l2Weth: string, amount: BigNumber): Promise<TransactionResponse> {
-    const l2Signer = this.tokenClient.spokePoolClients[chainId].spokePool.signer;
+    const spokePoolClient = this.tokenClient.spokePoolClients[chainId];
+    assert(isEVMSpokePoolClient(spokePoolClient));
+    const l2Signer = spokePoolClient.spokePool.signer;
     const l2Weth = new Contract(_l2Weth, WETH_ABI, l2Signer);
     this.log("Unwrapping WETH", { amount: amount.toString() });
     return runTransaction(this.logger, l2Weth, "withdraw", [amount]);

@@ -36,6 +36,8 @@ import BLAST_OPTIMISM_PORTAL_ABI from "./abi/BlastOptimismPortal.json";
 import SCROLL_GATEWAY_ROUTER_L1_ABI from "./abi/ScrollGatewayRouterL1.json";
 import SCROLL_GATEWAY_ROUTER_L2_ABI from "./abi/ScrollGatewayRouterL2.json";
 import SCROLL_GAS_PRICE_ORACLE_ABI from "./abi/ScrollGasPriceOracle.json";
+import IOFT_ABI_FULL from "./abi/IOFT.json";
+export { IOFT_ABI_FULL };
 import HUB_POOL_STORE_ABI from "./abi/HubPoolStore.json";
 import SP1_HELIOS_ABI from "./abi/SP1Helios.json";
 
@@ -89,6 +91,10 @@ export const CONTRACT_ADDRESSES: {
     },
     opUSDCBridge_480: {
       address: "0x153A69e4bb6fEDBbAaF463CB982416316c84B2dB",
+      abi: OP_USDC_BRIDGE_ABI,
+    },
+    opUSDCBridge_1135: {
+      address: "0xE3622468Ea7dD804702B56ca2a4f88C0936995e6",
       abi: OP_USDC_BRIDGE_ABI,
     },
     opUSDCBridge_1868: {
@@ -354,6 +360,10 @@ export const CONTRACT_ADDRESSES: {
     },
   },
   [CHAIN_IDs.LISK]: {
+    opUSDCBridge: {
+      address: "0x3b1ac69368eb6447F5db2d4E1641380Fa9e40d29",
+      abi: OP_USDC_BRIDGE_ABI,
+    },
     ovmStandardBridge: {
       address: "0x4200000000000000000000000000000000000010",
       abi: OVM_L2_STANDARD_BRIDGE_ABI,
