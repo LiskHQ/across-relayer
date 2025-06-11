@@ -30,6 +30,7 @@ import {
   getRemoteTokenForL1Token,
   getTokenInfo,
   isEVMSpokePoolClient,
+  repaymentChainCanBeQuicklyRebalanced,
 } from "../utils";
 import { HubPoolClient, TokenClient, BundleDataClient } from ".";
 import { Deposit, ProposedRootBundle } from "../interfaces";
@@ -395,7 +396,7 @@ export class InventoryClient {
 
   /**
    * Returns true if the depositor-specified output token is supported by this inventory client.
-   * @param deposit V3 Deposit to consider
+   * @param deposit Deposit to consider
    * @returns boolean True if output and input tokens are equivalent or if input token is USDC and output token
    * is Bridged USDC.
    */
@@ -494,9 +495,11 @@ export class InventoryClient {
       );
     }
 
-    // The hub chain is magical; don't fumble repayment based on perceived over-allocation.
-    if (forceOriginRepayment && deposit.originChainId === hubChainId) {
-      return [hubChainId];
+    // If the deposit forces origin chain repayment but the origin chain is one we can easily rebalance inventory from,
+    // then don't ignore this deposit based on perceived over-allocation. For example, the hub chain and chains connected
+    // to the user's Binance API are easy to move inventory from so we should never skip filling these deposits.
+    if (forceOriginRepayment && repaymentChainCanBeQuicklyRebalanced(deposit, this.hubPoolClient)) {
+      return [deposit.originChainId];
     }
 
     l1Token ??= this.getL1TokenAddress(inputToken, originChainId);
