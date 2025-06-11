@@ -187,3 +187,7 @@ function cleanKeysFromEnvironment(
     arweaveKeys.forEach((key: string) => delete process.env[key]);
   }
 }
+
+export function isSignerWallet(signer: Signer): signer is Wallet {
+  return signer["_signingKey"]?.() !== undefined;
+}
