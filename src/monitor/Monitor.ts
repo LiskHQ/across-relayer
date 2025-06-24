@@ -518,8 +518,15 @@ export class Monitor {
   async checkBinanceWithdrawalLimits() {
     const binanceApi = await getBinanceApiClient(process.env["BINANCE_API_BASE"]);
     const wdQuota = await getBinanceWithdrawalLimits(binanceApi);
-    const aboveThreshold = wdQuota.usedWdQuota / wdQuota.wdQuota > this.monitorConfig.binanceWithdrawWarnThreshold;
-    this.logger[aboveThreshold ? "warn" : "debug"]({
+    const aboveWarnThreshold =
+      isDefined(this.monitorConfig.binanceWithdrawWarnThreshold) &&
+      wdQuota.usedWdQuota / wdQuota.wdQuota > this.monitorConfig.binanceWithdrawWarnThreshold;
+    const aboveAlertThreshold =
+      isDefined(this.monitorConfig.binanceWithdrawAlertThreshold) &&
+      wdQuota.usedWdQuota / wdQuota.wdQuota > this.monitorConfig.binanceWithdrawAlertThreshold;
+
+    const level = aboveAlertThreshold ? "error" : aboveWarnThreshold ? "warn" : "debug";
+    this.logger[level]({
       at: "Monitor#checkBinanceWithdrawalLimits",
       message: "Binance withdrawal quota",
       wdQuota,
@@ -1163,7 +1170,7 @@ export class Monitor {
   protected getRemoteTokenForL1Token(l1Token: string, chainId: number | string): string | undefined {
     return chainId === this.clients.hubPoolClient.chainId
       ? l1Token
-      : getRemoteTokenForL1Token(l1Token, chainId, this.clients.hubPoolClient);
+      : getRemoteTokenForL1Token(l1Token, chainId, this.clients.hubPoolClient.chainId);
   }
 
   private updateRelayerBalanceTable(
