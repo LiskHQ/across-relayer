@@ -81,6 +81,8 @@ export const {
   chainIsSvm,
   ConvertDecimals,
   getTokenInfo,
+  convertRelayDataParamsToBytes32,
+  convertFillParamsToBytes32,
 } = sdk.utils;
 
 export const {
