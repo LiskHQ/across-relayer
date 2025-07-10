@@ -1,4 +1,4 @@
-import { arch, utils as sdkUtils } from "@across-protocol/sdk";
+import { utils as sdkUtils } from "@across-protocol/sdk";
 import { HubPoolClient, SpokePoolClient } from ".";
 import { CachingMechanismInterface, L1Token, Deposit } from "../interfaces";
 import {
@@ -31,6 +31,8 @@ import {
   SvmAddress,
   SVMProvider,
   EvmAddress,
+  convertRelayDataParamsToBytes32,
+  getSolanaTokenBalance,
 } from "../utils";
 
 export type TokenDataType = { [chainId: number]: { [token: string]: { balance: BigNumber; allowance: BigNumber } } };
@@ -99,7 +101,12 @@ export class TokenClient {
 
   captureTokenShortfallForFill(deposit: Deposit): void {
     const { outputAmount: unfilledAmount } = deposit;
-    this.logger.debug({ at: "TokenBalanceClient", message: "Handling token shortfall", deposit, unfilledAmount });
+    this.logger.debug({
+      at: "TokenBalanceClient",
+      message: "Handling token shortfall",
+      deposit: convertRelayDataParamsToBytes32(deposit),
+      unfilledAmount,
+    });
     this.captureTokenShortfall(deposit.destinationChainId, deposit.outputToken, deposit.depositId, unfilledAmount);
   }
 
@@ -448,37 +455,7 @@ export class TokenClient {
     walletAddress: SvmAddress,
     tokenMint: SvmAddress
   ): Promise<BigNumber> {
-    // Convert addresses to the correct format for SVM provider
-    const ownerPubkey = arch.svm.toAddress(walletAddress);
-    const mintPubkey = arch.svm.toAddress(tokenMint);
-
-    // Get token accounts owned by the wallet for this specific mint
-    const tokenAccountsByOwner = await provider
-      .getTokenAccountsByOwner(
-        ownerPubkey,
-        {
-          mint: mintPubkey,
-        },
-        {
-          encoding: "jsonParsed",
-        }
-      )
-      .send();
-
-    const response = tokenAccountsByOwner;
-    if (!response.value || response.value.length === 0) {
-      // No token account found for this mint, balance is 0
-      return toBN(0);
-    }
-
-    // For SPL tokens, there should typically be only one token account per mint per owner
-    // Sum all balances in case there are multiple accounts (rare but possible)
-    const totalBalance = response.value.reduce((acc, accountInfo) => {
-      const balance = accountInfo?.account?.data?.parsed?.info?.tokenAmount?.amount;
-      return balance ? acc.add(toBN(balance)) : acc;
-    }, toBN(0));
-
-    return totalBalance;
+    return getSolanaTokenBalance(provider, tokenMint, walletAddress);
   }
 
   protected async getRedis(): Promise<CachingMechanismInterface | undefined> {

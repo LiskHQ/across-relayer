@@ -33,7 +33,7 @@ export async function runRelayer(_logger: winston.Logger, baseSigner: Signer): P
 
   logger = _logger;
   const config = new RelayerConfig(process.env);
-  const { externalListener, pollingDelay, sendingTransactionsEnabled, sendingSlowRelaysEnabled } = config;
+  const { externalListener, pollingDelay } = config;
 
   const loop = pollingDelay > 0;
   let stop = false;
@@ -57,7 +57,7 @@ export async function runRelayer(_logger: winston.Logger, baseSigner: Signer): P
   await relayer.init();
 
   const { spokePoolClients } = relayerClients;
-  const simulate = !sendingTransactionsEnabled;
+  const simulate = !config.sendingTransactionsEnabled || !config.sendingRelaysEnabled;
   let txnReceipts: { [chainId: number]: Promise<string[]> } = {};
 
   logger.info({ at: "Relayer#run", message: "Starting relayer API server." });
@@ -108,7 +108,7 @@ export async function runRelayer(_logger: winston.Logger, baseSigner: Signer): P
       }
 
       if (!stop) {
-        txnReceipts = await relayer.checkForUnfilledDepositsAndFill(sendingSlowRelaysEnabled, simulate);
+        txnReceipts = await relayer.checkForUnfilledDepositsAndFill(config.sendingSlowRelaysEnabled, simulate);
         await relayer.runMaintenance();
       }
 
