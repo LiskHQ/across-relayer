@@ -2,6 +2,8 @@ import { CommonConfig, ProcessEnv } from "../common";
 import { BigNumber, assert, getArweaveJWKSigner, toBNWei } from "../utils";
 
 export class DataworkerConfig extends CommonConfig {
+  readonly minChallengeLeadTime: number;
+  readonly awaitChallengePeriod: boolean;
   readonly maxPoolRebalanceLeafSizeOverride: number;
   readonly maxRelayerRepaymentLeafSizeOverride: number;
   readonly rootBundleExecutionThreshold: BigNumber;
@@ -55,8 +57,13 @@ export class DataworkerConfig extends CommonConfig {
       FORCE_PROPOSAL_BUNDLE_RANGE,
       PERSIST_BUNDLES_TO_ARWEAVE,
       EXECUTOR_IGNORE_CHAINS,
+      MIN_CHALLENGE_LEAD_TIME = "600",
+      AWAIT_CHALANGE_PERIOD = "false",
     } = env;
     super(env);
+
+    this.minChallengeLeadTime = Number(MIN_CHALLENGE_LEAD_TIME);
+    this.awaitChallengePeriod = AWAIT_CHALANGE_PERIOD === "true";
 
     this.bufferToPropose = BUFFER_TO_PROPOSE ? Number(BUFFER_TO_PROPOSE) : (20 * 60) / 15; // 20 mins of blocks;
     // Should we assert that the leaf count caps are > 0?

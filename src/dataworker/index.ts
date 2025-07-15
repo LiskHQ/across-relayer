@@ -4,12 +4,16 @@ import {
   SvmAddress,
   winston,
   config,
+  getDeployedContract,
+  getProvider,
   startupLogLevel,
   Signer,
   disconnectRedisClients,
   isDefined,
   Profiler,
   getSvmSignerFromEvmSigner,
+  getRedisCache,
+  waitForPubSub,
 } from "../utils";
 import { spokePoolClientsToProviders } from "../common";
 import { Dataworker } from "./Dataworker";
@@ -26,15 +30,18 @@ import { PendingRootBundle, BundleData } from "../interfaces";
 config();
 let logger: winston.Logger;
 
+const { RUN_IDENTIFIER: runIdentifier, BOT_IDENTIFIER: botIdentifier = "across-dataworker" } = process.env;
+
 export async function createDataworker(
   _logger: winston.Logger,
-  baseSigner: Signer
+  baseSigner: Signer,
+  config?: DataworkerConfig
 ): Promise<{
   config: DataworkerConfig;
   clients: DataworkerClients;
   dataworker: Dataworker;
 }> {
-  const config = new DataworkerConfig(process.env);
+  config ??= new DataworkerConfig(process.env);
   const clients = await constructDataworkerClients(_logger, config, baseSigner);
 
   const dataworker = new Dataworker(
@@ -57,6 +64,32 @@ export async function createDataworker(
   };
 }
 
+function resolvePersonality(config: DataworkerConfig): string {
+  if (config.proposerEnabled) {
+    return config.l1ExecutorEnabled ? "Proposer/Executor" : "Proposer";
+  }
+
+  if (config.l1ExecutorEnabled || config.l2ExecutorEnabled) {
+    return "Executor";
+  }
+
+  if (config.disputerEnabled) {
+    return "Disputer";
+  }
+
+  return "Dataworker"; // unknown
+}
+
+async function getChallengeRemaining(chainId: number): Promise<number> {
+  const provider = await getProvider(chainId);
+  const hubPool = getDeployedContract("HubPool", chainId).connect(provider);
+
+  const [proposal, currentTime] = await Promise.all([hubPool.rootBundleProposal(), hubPool.getCurrentTime()]);
+  const { challengePeriodEndTimestamp } = proposal;
+
+  return Math.max(challengePeriodEndTimestamp - currentTime, 0);
+}
+
 export async function runDataworker(_logger: winston.Logger, baseSigner: Signer): Promise<void> {
   const profiler = new Profiler({
     at: "Dataworker#index",
@@ -64,8 +97,21 @@ export async function runDataworker(_logger: winston.Logger, baseSigner: Signer)
   });
   logger = _logger;
 
-  const { clients, config, dataworker } = await profiler.measureAsync(
-    createDataworker(logger, baseSigner),
+  const config = new DataworkerConfig(process.env);
+  const personality = resolvePersonality(config);
+  const challengeRemaining = await getChallengeRemaining(config.hubPoolChainId);
+
+  if (challengeRemaining > config.minChallengeLeadTime && (config.proposerEnabled || config.l1ExecutorEnabled)) {
+    logger[startupLogLevel(config)]({
+      at: "Dataworker#index",
+      message: `${personality} aborting (not ready)`,
+      challengeRemaining,
+    });
+    return;
+  }
+
+  const { clients, dataworker } = await profiler.measureAsync(
+    createDataworker(logger, baseSigner, config),
     "createDataworker",
     {
       message: "Time to update non-spoke clients",
@@ -75,10 +121,12 @@ export async function runDataworker(_logger: winston.Logger, baseSigner: Signer)
   await config.update(logger); // Update address filter.
   let proposedBundleData: BundleData | undefined = undefined;
   let poolRebalanceLeafExecutionCount = 0;
+
+  const redis = await getRedisCache(logger);
   try {
     // Explicitly don't log addressFilter because it can be huge and can overwhelm log transports.
     const { addressFilter: _addressFilter, ...loggedConfig } = config;
-    logger[startupLogLevel(config)]({ at: "Dataworker#index", message: "Dataworker started 👩‍🔬", loggedConfig });
+    logger[startupLogLevel(config)]({ at: "Dataworker#index", message: `${personality} started 👩‍🔬`, loggedConfig });
 
     profiler.mark("loopStart");
     // Determine the spoke client's lookback:
@@ -213,7 +261,7 @@ export async function runDataworker(_logger: winston.Logger, baseSigner: Signer)
       poolRebalanceLeafExecutionCount > 0 &&
       (pendingProposal.unclaimedPoolRebalanceLeafCount !== poolRebalanceLeafExecutionCount ||
         pendingProposal.challengePeriodEndTimestamp > clients.hubPoolClient.currentTime);
-    if (proposalCollision || executorCollision) {
+    if (proposalCollision || (executorCollision && !config.awaitChallengePeriod)) {
       logger[startupLogLevel(config)]({
         at: "Dataworker#index",
         message: "Exiting early due to dataworker function collision",
@@ -226,6 +274,45 @@ export async function runDataworker(_logger: winston.Logger, baseSigner: Signer)
         pendingProposal,
       });
     } else {
+      if (config.l1ExecutorEnabled && redis && runIdentifier) {
+        let updatedChallengeRemaining = await getChallengeRemaining(config.hubPoolChainId);
+        let counter = 0;
+
+        // publish so that other instances can see that we're running
+        await redis.pub(botIdentifier, runIdentifier);
+        logger.debug({
+          at: "Dataworker#index",
+          message: `Published signal to ${botIdentifier} instances.`,
+        });
+
+        while (updatedChallengeRemaining > 0 && ++counter < 5) {
+          logger.debug({
+            at: "Dataworker#index",
+            message: `Waiting for updated challenge remaining ${updatedChallengeRemaining}`,
+          });
+          const handover = await waitForPubSub(
+            redis,
+            botIdentifier,
+            runIdentifier,
+            (updatedChallengeRemaining + 12) * 1000
+          );
+          if (handover) {
+            logger.debug({
+              at: "Dataworker#index",
+              message: `Handover signal received from ${botIdentifier} instance ${runIdentifier}.`,
+            });
+            return;
+          } else {
+            logger.debug({
+              at: "Dataworker#index",
+              message: `No handover signal received from ${botIdentifier} instance ${runIdentifier}. Continuing...`,
+            });
+          }
+
+          updatedChallengeRemaining = await getChallengeRemaining(config.hubPoolChainId);
+        }
+      }
+
       await clients.multiCallerClient.executeTxnQueues();
     }
     profiler.mark("dataworkerFunctionLoopTimerEnd");
