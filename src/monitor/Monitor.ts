@@ -195,7 +195,7 @@ export class Monitor {
     const { hubPoolClient, spokePoolClients } = this.clients;
     const unfilledDeposits: Record<number, DepositWithBlock[]> = Object.fromEntries(
       await mapAsync(Object.values(spokePoolClients), async ({ chainId: destinationChainId }) => {
-        const deposits = getUnfilledDeposits(destinationChainId, spokePoolClients, hubPoolClient).map(
+        const deposits = getUnfilledDeposits(spokePoolClients[destinationChainId], spokePoolClients, hubPoolClient).map(
           ({ deposit, invalidFills: invalid }) => {
             // Ignore depositId >= bnUInt32Max; these tend to be pre-fills that are eventually valid and
             // tend to confuse this reporting because there are multiple deposits with the same depositId.
@@ -1384,7 +1384,7 @@ export class Monitor {
         this.spokePoolsBlocks[chainId].endingBlock = endingBlock;
       } else if (isSVMSpokePoolClient(spokePoolClient)) {
         const svmProvider = await spokePoolClient.svmEventsClient.getRpc();
-        const { slot: latestSlot } = await arch.svm.getNearestSlotTime(svmProvider);
+        const { slot: latestSlot } = await arch.svm.getNearestSlotTime(svmProvider, spokePoolClient.logger);
         const endingBlock = this.monitorConfig.spokePoolsBlocks[chainId]?.endingBlock;
         this.monitorConfig.spokePoolsBlocks[chainId] ??= { startingBlock: undefined, endingBlock: undefined };
         if (this.monitorConfig.pollingDelay === 0) {
