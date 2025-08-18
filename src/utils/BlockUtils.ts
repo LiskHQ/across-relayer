@@ -27,8 +27,8 @@ export async function getBlockFinder(logger: winston.Logger, chainId: number): P
     evmBlockFinders[chainId] ??= new EVMBlockFinder(await getProvider(chainId));
     return evmBlockFinders[chainId];
   }
-  const provider = getSvmProvider();
-  svmBlockFinder ??= new SVMBlockFinder(logger, provider);
+  const provider = getSvmProvider(await getRedisCache());
+  svmBlockFinder ??= new SVMBlockFinder(provider, [], logger);
   return svmBlockFinder;
 }
 
@@ -79,9 +79,13 @@ export async function getTimestampsForBundleStartBlocks(
           return [chainId, (await spokePoolClient.spokePool.getCurrentTime({ blockTag: startAt })).toNumber()];
         } else if (isSVMSpokePoolClient(spokePoolClient)) {
           const provider = spokePoolClient.svmEventsClient.getRpc();
-          const { timestamp } = await arch.svm.getNearestSlotTime(provider, spokePoolClient.logger, {
-            slot: BigInt(startAt),
-          });
+          const { timestamp } = await arch.svm.getNearestSlotTime(
+            provider,
+            {
+              slot: BigInt(startAt),
+            },
+            spokePoolClient.logger
+          );
           return [chainId, timestamp];
         }
       })

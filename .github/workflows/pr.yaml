@@ -10,7 +10,7 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Use Node.js from .nvmrc
+      - name: Use Node.js version from .nvmrc
         uses: actions/setup-node@v4
         with:
           node-version-file: ".nvmrc"
@@ -18,11 +18,12 @@ jobs:
         run: npm install --global yarn
       - name: Install dependencies
         shell: bash
-        run: yarn --prefer-offline
+        run: yarn --frozen-lockfile --prefer-offline
       - name: Build
         shell: bash
         run: yarn build
-      - run: yarn format
+      - name: Run formatter
+        run: yarn format
       - name: Check format
         run: |
           if [ -z "$(git status --untracked-files=no --porcelain)" ]; then
