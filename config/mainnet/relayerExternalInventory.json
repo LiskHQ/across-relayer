@@ -29,7 +29,7 @@
         "targetPct": 30,
         "thresholdPct": 20,
         "targetOverageBuffer": 1.8,
-        "withdrawExcessPeriod": 129600
+        "withdrawExcessPeriod": 64800
       }
     }
   }
