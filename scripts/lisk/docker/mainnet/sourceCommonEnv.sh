@@ -63,7 +63,7 @@ echo "PRIORITY_FEE_SCALER_1=0.8"  >> ${env_file}
 echo "RELAYER_GAS_PADDING=0"  >> ${env_file}
 
 # Supported token settings
-echo RELAYER_TOKENS=\'[\"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2\", \"0x6033F7f88332B8db6ad452B7C6D5bB643990aE3f\", \"0xdAC17F958D2ee523a2206206994597C13D831ec7\"]\'  >> ${env_file}
+echo RELAYER_TOKENS=\'[\"0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2\", \"0x6033F7f88332B8db6ad452B7C6D5bB643990aE3f\"]\'  >> ${env_file}
 echo MIN_DEPOSIT_CONFIRMATIONS=\'{\"5000\": { \"1\": 5, \"1135\": 10 }, \"2000\": { \"1\": 4, \"1135\": 10 }, \"100\": { \"1\": 3, \"1135\": 10 } }\' >> ${env_file}
 echo RELAYER_EXTERNAL_INVENTORY_CONFIG=\'config/mainnet/relayerExternalInventory.json\' >> ${env_file}
 
