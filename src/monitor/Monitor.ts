@@ -1,5 +1,5 @@
-import { BalanceAllocator, BundleDataApproxClient } from "../clients";
-import { EXPECTED_L1_TO_L2_MESSAGE_TIME, spokePoolClientsToProviders } from "../common";
+import { BundleDataApproxClient } from "../clients";
+import { EXPECTED_L1_TO_L2_MESSAGE_TIME } from "../common";
 import {
   BalanceType,
   BundleAction,
@@ -35,9 +35,7 @@ import {
   toBNWei,
   winston,
   TOKEN_SYMBOLS_MAP,
-  WETH9,
   CHAIN_IDs,
-  runTransaction,
   isDefined,
   resolveTokenDecimals,
   sortEventsDescending,
@@ -92,7 +90,6 @@ export class Monitor {
   private balanceCache: { [chainId: number]: { [token: string]: { [account: string]: BigNumber } } } = {};
   private decimals: { [chainId: number]: { [token: string]: number } } = {};
   private additionalL1Tokens: L1Token[] = [];
-  private balanceAllocator: BalanceAllocator;
   // Chains for each spoke pool client.
   public monitorChains: number[];
   // Chains that we care about inventory manager activity on, so doesn't include Ethereum which doesn't
@@ -117,7 +114,6 @@ export class Monitor {
       monitorChains: this.monitorChains,
       crossChainAdapterSupportedChains: this.crossChainAdapterSupportedChains,
     });
-    this.balanceAllocator = new BalanceAllocator(spokePoolClientsToProviders(clients.spokePoolClients));
     this.additionalL1Tokens = monitorConfig.additionalL1NonLpTokens.map((l1Token) => {
       const l1TokenInfo = getTokenInfo(EvmAddress.from(l1Token), this.clients.hubPoolClient.chainId);
       assert(l1TokenInfo.address.isEVM());
@@ -217,7 +213,10 @@ export class Monitor {
   async reportInvalidFills(): Promise<void> {
     const invalidFills = await sdkUtils.findInvalidFills(this.clients.spokePoolClients);
 
+    const invalidFillsByChainId: Record<string, number> = {};
     invalidFills.forEach((invalidFill) => {
+      const destinationChainName = getNetworkName(invalidFill.fill.destinationChainId);
+      invalidFillsByChainId[destinationChainName] = (invalidFillsByChainId[destinationChainName] ?? 0) + 1;
       const destinationChainId = invalidFill.fill.destinationChainId;
       const outputToken = invalidFill.fill.outputToken;
       let tokenInfo: TokenInfo;
@@ -238,8 +237,8 @@ export class Monitor {
       const deposit = invalidFill.deposit
         ? {
             txnRef: invalidFill.deposit.txnRef,
-            inputToken: invalidFill.deposit.inputToken,
-            depositor: invalidFill.deposit.depositor,
+            inputToken: invalidFill.deposit.inputToken.toNative(),
+            depositor: invalidFill.deposit.depositor.toNative(),
           }
         : undefined;
 
@@ -247,14 +246,23 @@ export class Monitor {
         at: "Monitor::reportInvalidFills",
         message,
         destinationChainId,
-        outputToken: invalidFill.fill.outputToken,
-        relayer: invalidFill.fill.relayer,
+        outputToken: invalidFill.fill.outputToken.toNative(),
+        relayer: invalidFill.fill.relayer.toNative(),
         blockExplorerLink: blockExplorerLink(invalidFill.fill.txnRef, destinationChainId),
         reason: invalidFill.reason,
         deposit,
         notificationPath: "across-invalid-fills",
       });
     });
+
+    if (Object.keys(invalidFillsByChainId).length > 0) {
+      this.logger.info({
+        at: "Monitor::invalidFillsByChain",
+        message: "Invalid fills by chain",
+        invalidFillsByChainId,
+        notificationPath: "across-invalid-fills",
+      });
+    }
   }
 
   async reportUnfilledDeposits(): Promise<void> {
@@ -508,7 +516,7 @@ export class Monitor {
           throw new Error(`No decimals found for ${tokenSymbol}`);
         }
         Object.entries(columns).forEach(([chainName, cell]) => {
-          if (this._tokenEnabledForNetwork(tokenSymbol, chainName)) {
+          if (this._tokenEnabledForNetwork(tokenSymbol, chainName) || chainName === ALL_CHAINS_NAME) {
             Object.entries(cell).forEach(([balanceType, balance]) => {
               // Don't log zero balances.
               if (balance.isZero()) {
@@ -695,173 +703,6 @@ export class Monitor {
       message: "Binance withdrawal quota",
       wdQuota,
     });
-  }
-
-  /**
-   * @notice Checks if any accounts on refill balances list are under their ETH target, if so tries to refill them.
-   * This functionality compliments the report-only mode of `checkBalances`. Its expected that some accounts are
-   * listed in `monitorBalances`. These accounts might also be listed in `refillBalances` with a higher target than
-   * the `monitorBalances` target. This function will ensure that `checkBalances` will rarely alert for those
-   * balances.
-   */
-  async refillBalances(): Promise<void> {
-    const { refillEnabledBalances } = this.monitorConfig;
-
-    // Check for current balances.
-    const currentBalances = await this._getBalances(refillEnabledBalances);
-    const decimalValues = await this._getDecimals(refillEnabledBalances);
-    this.logger.debug({
-      at: "Monitor#refillBalances",
-      message: "Checking balances for refilling",
-      currentBalances: refillEnabledBalances.map(({ chainId, token, account, target }, i) => {
-        return {
-          chainId,
-          token: token.toEvmAddress(),
-          account: account.toEvmAddress(),
-          currentBalance: currentBalances[i].toString(),
-          target: parseUnits(target.toString(), decimalValues[i]),
-        };
-      }),
-    });
-
-    // Compare current balances with triggers and send tokens if signer has enough balance.
-    const signerAddress = await this.clients.hubPoolClient.hubPool.signer.getAddress();
-    const promises = await Promise.allSettled(
-      refillEnabledBalances.map(async ({ chainId, isHubPool, token, account, target, trigger }, i) => {
-        const currentBalance = currentBalances[i];
-        const decimals = decimalValues[i];
-        const balanceTrigger = parseUnits(trigger.toString(), decimals);
-        const isBelowTrigger = currentBalance.lte(balanceTrigger);
-        if (isBelowTrigger) {
-          // Fill balance back to target, not trigger.
-          const balanceTarget = parseUnits(target.toString(), decimals);
-          const deficit = balanceTarget.sub(currentBalance);
-          let canRefill = await this.balanceAllocator.requestBalanceAllocation(
-            chainId,
-            [token],
-            toAddressType(signerAddress, chainId),
-            deficit
-          );
-          const spokePoolClient = this.clients.spokePoolClients[chainId];
-          // If token is gas token, try unwrapping deficit amount of WETH into ETH to have available for refill.
-          if (
-            !canRefill &&
-            token.eq(getNativeTokenAddressForChain(chainId)) &&
-            getNativeTokenSymbol(chainId) === "ETH" &&
-            isEVMSpokePoolClient(spokePoolClient)
-          ) {
-            const weth = new Contract(
-              TOKEN_SYMBOLS_MAP.WETH.addresses[chainId],
-              WETH9.abi,
-              spokePoolClient.spokePool.signer
-            );
-            const wethBalance = await weth.balanceOf(signerAddress);
-            if (wethBalance.gte(deficit)) {
-              const txn = await (await runTransaction(this.logger, weth, "withdraw", [deficit])).wait();
-              this.logger.info({
-                at: "Monitor#refillBalances",
-                message: `Unwrapped WETH from ${signerAddress} to refill ETH in ${account} 🎁!`,
-                chainId,
-                requiredUnwrapAmount: deficit.toString(),
-                wethBalance,
-                wethAddress: weth.address,
-                ethBalance: currentBalance.toString(),
-                transactionHash: blockExplorerLink(txn.transactionHash, chainId),
-              });
-              canRefill = true;
-            } else {
-              this.logger.warn({
-                at: "Monitor#refillBalances",
-                message: `Trying to unwrap WETH balance from ${signerAddress} to use for refilling ETH in ${account} but not enough WETH to unwrap`,
-                chainId,
-                requiredUnwrapAmount: deficit.toString(),
-                wethBalance,
-                wethAddress: weth.address,
-                ethBalance: currentBalance.toString(),
-              });
-              return;
-            }
-          }
-          if (canRefill && isEVMSpokePoolClient(spokePoolClient)) {
-            this.logger.debug({
-              at: "Monitor#refillBalances",
-              message: "Balance below trigger and can refill to target",
-              from: signerAddress,
-              to: account.toEvmAddress(),
-              balanceTrigger,
-              balanceTarget,
-              deficit,
-              token: token.toEvmAddress(),
-              chainId,
-              isHubPool,
-            });
-            // There are three cases:
-            // 1. The account is the HubPool. In which case we need to call a special function to load ETH into it.
-            // 2. The account is not a HubPool and we want to load ETH.
-            if (isHubPool) {
-              // Note: We ignore the `token` if the account is HubPool because we can't call the method with other tokens.
-              this.clients.multiCallerClient.enqueueTransaction({
-                contract: this.clients.hubPoolClient.hubPool,
-                chainId: this.clients.hubPoolClient.chainId,
-                method: "loadEthForL2Calls",
-                args: [],
-                message: "Reloaded ETH in HubPool 🫡!",
-                mrkdwn: `Loaded ${formatUnits(deficit, decimals)} ETH from ${signerAddress}.`,
-                value: deficit,
-              });
-            } else {
-              const nativeSymbolForChain = getNativeTokenSymbol(chainId);
-              // To send a raw transaction, we need to create a fake Contract instance at the recipient address and
-              // set the method param to be an empty string.
-              const sendRawTransactionContract = new Contract(
-                account.toEvmAddress(),
-                [],
-                spokePoolClient.spokePool.signer
-              );
-              const txn = await (await runTransaction(this.logger, sendRawTransactionContract, "", [], deficit)).wait();
-              this.logger.info({
-                at: "Monitor#refillBalances",
-                message: `Reloaded ${formatUnits(
-                  deficit,
-                  decimals
-                )} ${nativeSymbolForChain} for ${account} from ${signerAddress} 🫡!`,
-                transactionHash: blockExplorerLink(txn.transactionHash, chainId),
-              });
-            }
-          } else {
-            this.logger.warn({
-              at: "Monitor#refillBalances",
-              message: "Cannot refill balance to target",
-              from: signerAddress,
-              to: account,
-              balanceTrigger,
-              balanceTarget,
-              deficit,
-              token,
-              chainId,
-            });
-          }
-        } else {
-          this.logger.debug({
-            at: "Monitor#refillBalances",
-            message: "Balance is above trigger",
-            account,
-            balanceTrigger,
-            currentBalance: currentBalance.toString(),
-            token,
-            chainId,
-          });
-        }
-      })
-    );
-    const rejections = promises.filter((promise) => promise.status === "rejected");
-    if (rejections.length > 0) {
-      this.logger.warn({
-        at: "Monitor#refillBalances",
-        message: "Some refill transactions rejected for unknown reasons",
-        rejections,
-      });
-    }
   }
 
   async checkSpokePoolRunningBalances(): Promise<void> {
@@ -1305,6 +1146,13 @@ export class Monitor {
     for (const relayer of this.monitorConfig.monitoredRelayers) {
       for (const l1Token of allL1Tokens) {
         for (const chainId of this.monitorChains) {
+          if (l1Token.symbol === "USDC.e") {
+            // We don't want to double count USDC/USDC.e repayments. When this.getUpcomingRefunds() is queried for a
+            // specific L1 token address, it will return either USDC.e and USDC repayments--depending on the 'native' USDC
+            // for the L2 chain in question. USDC.e is a special token injected into
+            // this.getL1TokensForRelayerBalancesReport() so we can skip it here.
+            continue;
+          }
           const upcomingRefunds = this.getUpcomingRefunds(chainId, l1Token.address, relayer);
           if (upcomingRefunds.gt(0)) {
             const l2TokenAddress = getRemoteTokenForL1Token(
