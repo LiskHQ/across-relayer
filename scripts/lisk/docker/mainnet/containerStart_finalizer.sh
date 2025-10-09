@@ -9,9 +9,8 @@ echo "SLACK_CONFIG=" >> ${env_file}
 # Set the bot identifier
 echo "BOT_IDENTIFIER=LISK_ACROSS_FINALIZER"  >> ${env_file}
 
-# Relaying and rebalancing OFF
+# Relaying OFF
 echo "SEND_RELAYS=false" >> ${env_file}
-echo "SEND_REBALANCES=false"  >> ${env_file}
 
 # Finalizer ON
 echo "FINALIZER_ENABLED=true" >> ${env_file}
