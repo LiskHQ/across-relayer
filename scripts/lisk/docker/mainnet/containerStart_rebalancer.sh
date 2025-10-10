@@ -9,10 +9,6 @@ echo "SLACK_CONFIG=" >> ${env_file}
 # Set the bot identifier
 echo "BOT_IDENTIFIER=LISK_ACROSS_REBALANCER"  >> ${env_file}
 
-# Relaying OFF rebalancing ON
-echo "SEND_RELAYS=false" >> ${env_file}
-echo "SEND_REBALANCES=true"  >> ${env_file}
-
 # Looping mode OFF
 echo "POLLING_DELAY=0" >> ${env_file}
 
@@ -22,4 +18,4 @@ echo "All env vars are set."
 REBALANCER_RESTART_INTERVAL_SECONDS=`echo $RELAYER_CONFIG | jq -r ."REBALANCER_RESTART_INTERVAL_SECONDS"`
 sleep $((REBALANCER_RESTART_INTERVAL_SECONDS))
 
-node ${app_dir}/dist/index.js --relayer --wallet awskms --keys relayerKey
+node ${app_dir}/dist/index.js --rebalancer --wallet awskms --keys relayerKey

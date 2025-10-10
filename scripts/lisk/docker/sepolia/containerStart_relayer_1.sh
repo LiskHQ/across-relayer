@@ -13,9 +13,8 @@ echo "API_SERVER_PORT=$API_SERVER_PORT" >> ${app_dir}/.env
 # Set the bot identifier
 echo "BOT_IDENTIFIER=LISK_SEPOLIA_ACROSS_RELAYER_1"  >> ${env_file}
 
-# Relaying ON rebalancing OFF
+# Relaying ON
 echo "SEND_RELAYS=true" >> ${env_file}
-echo "SEND_REBALANCES=false"  >> ${env_file}
 
 # Enable debug logs
 echo "DEBUG_PROFITABILITY=false" >> ${env_file}
