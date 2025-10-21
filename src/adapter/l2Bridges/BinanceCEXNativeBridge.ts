@@ -2,6 +2,7 @@ import {
   BigNumber,
   createFormatFunction,
   getNetworkName,
+  Provider,
   Signer,
   Contract,
   EvmAddress,
@@ -12,8 +13,14 @@ import WETH_ABI from "../../common/abi/Weth.json";
 import { BinanceCEXBridge } from "./";
 
 export class BinanceCEXNativeBridge extends BinanceCEXBridge {
-  constructor(l2chainId: number, hubChainId: number, l2Signer: Signer, l1Signer: Signer, l1Token: EvmAddress) {
-    super(l2chainId, hubChainId, l2Signer, l1Signer, l1Token);
+  constructor(
+    l2chainId: number,
+    hubChainId: number,
+    l2Signer: Signer,
+    l1Provider: Provider | Signer,
+    l1Token: EvmAddress
+  ) {
+    super(l2chainId, hubChainId, l2Signer, l1Provider, l1Token);
   }
 
   async constructWithdrawToL1Txns(

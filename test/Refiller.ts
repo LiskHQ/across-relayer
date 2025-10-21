@@ -47,7 +47,7 @@ describe("Refiller", function () {
     };
     const refiller = new Refiller(spyLogger, config, clients);
     await refiller.initialize();
-    await refiller.refillBalances();
+    await refiller.refillNativeTokenBalances();
 
     expect(multiCallerClient.transactionCount()).to.equal(1);
     await multiCallerClient.executeTxnQueues();

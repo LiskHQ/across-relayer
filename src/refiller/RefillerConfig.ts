@@ -1,18 +1,15 @@
 import { CommonConfig, ProcessEnv } from "../common";
 import { getNativeTokenAddressForChain, Address, toAddressType, isDefined } from "../utils";
 
-export type RefillBalanceData = {
-  chainId: number;
-  isHubPool: boolean;
-  account: Address;
-  token: Address;
-  target: number;
-  trigger: number;
-  refillPeriod?: number;
-};
-
 export class RefillerConfig extends CommonConfig {
-  readonly refillEnabledBalances: RefillBalanceData[] = [];
+  readonly refillEnabledBalances: {
+    chainId: number;
+    isHubPool: boolean;
+    account: Address;
+    token: Address;
+    target: number;
+    trigger: number;
+  }[] = [];
 
   constructor(env: ProcessEnv) {
     super(env);

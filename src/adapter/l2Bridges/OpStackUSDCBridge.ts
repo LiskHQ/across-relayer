@@ -11,6 +11,7 @@ import {
   isDefined,
   MAX_SAFE_ALLOWANCE,
   paginatedEventQuery,
+  Provider,
   Signer,
   EvmAddress,
   getTokenInfo,
@@ -21,14 +22,20 @@ import { BaseL2BridgeAdapter } from "./BaseL2BridgeAdapter";
 export class OpStackUSDCBridge extends BaseL2BridgeAdapter {
   readonly minGasLimit = 200_000;
 
-  constructor(l2chainId: number, hubChainId: number, l2Signer: Signer, l1Signer: Signer, l1Token: EvmAddress) {
-    super(l2chainId, hubChainId, l2Signer, l1Signer, l1Token);
+  constructor(
+    l2chainId: number,
+    hubChainId: number,
+    l2Signer: Signer,
+    l1Provider: Provider | Signer,
+    l1Token: EvmAddress
+  ) {
+    super(l2chainId, hubChainId, l2Signer, l1Provider, l1Token);
 
     const { address: l2Address, abi: l2ABI } = CONTRACT_ADDRESSES[l2chainId].opUSDCBridge;
     this.l2Bridge = new Contract(l2Address, l2ABI, l2Signer);
 
     const { address: l1Address, abi: l1ABI } = CONTRACT_ADDRESSES[hubChainId][`opUSDCBridge_${l2chainId}`];
-    this.l1Bridge = new Contract(l1Address, l1ABI, l1Signer);
+    this.l1Bridge = new Contract(l1Address, l1ABI, l1Provider);
   }
 
   async constructWithdrawToL1Txns(
