@@ -26,10 +26,10 @@
     },
     "LSK": {
       "1135": {
-        "targetPct": 30,
-        "thresholdPct": 20,
-        "targetOverageBuffer": 1.8,
-        "withdrawExcessPeriod": 129600
+        "targetPct": 20,
+        "thresholdPct": 10,
+        "targetOverageBuffer": 2.5,
+        "withdrawExcessPeriod": 86400
       }
     }
   }
