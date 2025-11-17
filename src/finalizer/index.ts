@@ -46,7 +46,6 @@ import {
   polygonFinalizer,
   scrollFinalizer,
   zkSyncFinalizer,
-  oftRetryFinalizer,
 } from "./utils";
 import { FinalizerConfig } from "./config";
 
@@ -125,11 +124,6 @@ function generateChainConfig(): void {
     // Autoconfigure CCTP finalisation. SVM is currently limited to v1.
     if (cctpDomain !== CCTP_NO_DOMAIN && family !== ChainFamily.SVM) {
       config.finalizeOnAny.push(cctpV2Finalizer);
-    }
-
-    // @todo Once contracts are linked, change this to add all chains w/ OFT enabled.
-    if (chainId === CHAIN_IDs.ARBITRUM) {
-      config.finalizeOnAny.push(oftRetryFinalizer);
     }
   });
 }

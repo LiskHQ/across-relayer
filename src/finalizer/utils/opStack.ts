@@ -44,7 +44,7 @@ import {
   EvmAddress,
   ZERO_ADDRESS,
 } from "../../utils";
-import { CONTRACT_ADDRESSES, OPSTACK_CONTRACT_OVERRIDES, CHAIN_MAX_BLOCK_LOOKBACK } from "../../common";
+import { CONTRACT_ADDRESSES, OPSTACK_CONTRACT_OVERRIDES } from "../../common";
 import OPStackPortalL1 from "../../common/abi/OpStackPortalL1.json";
 import { FinalizerPromise, CrossChainMessage, AddressesToFinalize } from "../types";
 const { utils } = ethers;
@@ -145,7 +145,6 @@ export async function opStackFinalizer(
   // the lite chain to Ethereum via the canonical OVM standard bridge.
   // Filter out SpokePool as sender since we query for it previously using the TokensBridged event query.
   const ovmFromAddresses = Array.from(senderAddresses.keys())
-    .filter((address) => address.isEVM())
     .map((sender) => sender.toEvmAddress())
     .filter((sender) => sender !== spokePool.address);
   const searchConfig = { ...spokePoolClient.eventSearchConfig, to };
@@ -779,23 +778,9 @@ async function multicallOptimismFinalizations(
   );
   // Reduce the query by only querying events that were emitted after the earliest TokenBridged event we saw. This
   // is an easy optimization as we know that WithdrawalRequested events are only emitted after the TokenBridged event.
-  const l2FromBlock = tokensBridgedEvents[0].blockNumber;
-  const l2Provider = Signer.isSigner(crossChainMessenger.l2SignerOrProvider)
-    ? crossChainMessenger.l2SignerOrProvider.provider
-    : crossChainMessenger.l2SignerOrProvider;
-  const [l2Block, latestL1Block] = await Promise.all([
-    l2Provider.getBlock(l2FromBlock),
-    usdYieldManager.provider.getBlockNumber(),
-  ]);
-  const l1FromBlock = await getBlockForTimestamp(logger, hubPoolClient.chainId, l2Block.timestamp);
-  const l1SearchConfig = {
-    from: l1FromBlock,
-    to: latestL1Block,
-    maxLookBack: CHAIN_MAX_BLOCK_LOOKBACK[chainId],
-  };
+  const fromBlock = tokensBridgedEvents[0].blockNumber;
   const [_withdrawalRequests, lastCheckpointId, lastFinalizedRequestId] = await Promise.all([
-    paginatedEventQuery(
-      usdYieldManager,
+    usdYieldManager.queryFilter(
       usdYieldManager.filters.WithdrawalRequested(
         null,
         null,
@@ -808,7 +793,7 @@ async function multicallOptimismFinalizations(
         // stops querying TokensBridged/L2 Withdrawal events that have the HubPool as the recipient.
         [hubPoolClient.hubPool.address, blastDaiRetriever.address]
       ),
-      l1SearchConfig
+      fromBlock
     ),
     usdYieldManager.getLastCheckpointId(),
     // We fetch the lastFinalizedRequestId to filter out any withdrawal requests to give more
@@ -850,7 +835,7 @@ async function multicallOptimismFinalizations(
     ),
     Promise.all(
       claimableWithdrawalRequests.map(({ requestId }) =>
-        paginatedEventQuery(usdYieldManager, usdYieldManager.filters.WithdrawalClaimed(requestId), l1SearchConfig)
+        usdYieldManager.queryFilter(usdYieldManager.filters.WithdrawalClaimed(requestId), fromBlock)
       )
     ),
   ]);

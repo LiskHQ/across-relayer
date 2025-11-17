@@ -8,7 +8,7 @@ import { createDefaultSolanaClient, encodePauseDepositsMessageBody } from "./uti
 import { signer } from "./Solana.setup";
 import { finalizeCCTPV1MessagesSVM } from "../src/finalizer/utils/cctp/svmUtils";
 import { cctpV1L1toSvmL2Finalizer } from "../src/finalizer/utils/cctp/l1ToSvmL2";
-import { AttestedCCTPMessage, ZERO_ADDRESS, EvmAddress } from "../src/utils";
+import { AttestedCCTPMessage, ZERO_ADDRESS } from "../src/utils";
 import { FinalizerPromise } from "../src/finalizer/types";
 import { createSpyLogger, ethers, getContractFactory } from "./utils";
 import { setupDataworker } from "./fixtures/Dataworker.Fixture";
@@ -20,9 +20,6 @@ import * as svmSignerUtils from "../src/utils/SvmSignerUtils";
 interface ExtendedSolanaClient extends ReturnType<typeof createDefaultSolanaClient> {
   chainId: number;
 }
-
-const addressesToFinalize = new Map<Address, string[]>();
-addressesToFinalize.set(EvmAddress.from("0x1234567890123456789012345678901234567890"), []);
 
 // Helper function for the new tests
 const getAttestedMessage = async (
@@ -354,7 +351,7 @@ describe("finalizeCCTPV1Messages", () => {
         hubPoolClient as any, // Cast to local HubPoolClient type
         l2SpokePoolClient,
         evmSpokePoolClient,
-        addressesToFinalize
+        ["0x1234567890123456789012345678901234567890"] as any
       );
 
       // Verify the result structure
@@ -419,7 +416,7 @@ describe("finalizeCCTPV1Messages", () => {
         hubPoolClient as any, // Cast to local HubPoolClient type
         l2SpokePoolClient,
         evmSpokePoolClient,
-        addressesToFinalize
+        ["0x1234567890123456789012345678901234567890"] as any
       );
 
       // Verify the result structure
@@ -482,7 +479,7 @@ describe("finalizeCCTPV1Messages", () => {
         hubPoolClient as any, // Cast to local HubPoolClient type
         l2SpokePoolClient,
         evmSpokePoolClient,
-        addressesToFinalize
+        ["0x1234567890123456789012345678901234567890"] as any
       );
 
       // Verify the result structure
@@ -551,7 +548,7 @@ describe("finalizeCCTPV1Messages", () => {
         hubPoolClient as any, // Cast to local HubPoolClient type
         l2SpokePoolClient,
         evmSpokePoolClient,
-        addressesToFinalize
+        ["0x1234567890123456789012345678901234567890"] as any
       );
 
       // Verify the result structure
