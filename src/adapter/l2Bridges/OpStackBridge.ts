@@ -8,6 +8,7 @@ import {
   getNetworkName,
   isDefined,
   paginatedEventQuery,
+  Provider,
   Signer,
   toBN,
   EvmAddress,
@@ -17,13 +18,19 @@ import { BaseL2BridgeAdapter } from "./BaseL2BridgeAdapter";
 import { AugmentedTransaction } from "../../clients/TransactionClient";
 
 export class OpStackBridge extends BaseL2BridgeAdapter {
-  constructor(l2chainId: number, hubChainId: number, l2Signer: Signer, l1Signer: Signer, l1Token: EvmAddress) {
-    super(l2chainId, hubChainId, l2Signer, l1Signer, l1Token);
+  constructor(
+    l2chainId: number,
+    hubChainId: number,
+    l2Signer: Signer,
+    l1Provider: Provider | Signer,
+    l1Token: EvmAddress
+  ) {
+    super(l2chainId, hubChainId, l2Signer, l1Provider, l1Token);
 
     const { address, abi } = CONTRACT_ADDRESSES[l2chainId].ovmStandardBridge;
     this.l2Bridge = new Contract(address, abi, l2Signer);
     const { address: l1Address, abi: l1Abi } = CONTRACT_ADDRESSES[hubChainId][`ovmStandardBridge_${l2chainId}`];
-    this.l1Bridge = new Contract(l1Address, l1Abi, l1Signer);
+    this.l1Bridge = new Contract(l1Address, l1Abi, l1Provider);
   }
 
   constructWithdrawToL1Txns(

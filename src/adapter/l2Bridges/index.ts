@@ -6,4 +6,3 @@ export * from "./OpStackBridge";
 export * from "./OpStackUSDCBridge";
 export * from "./OpStackWethBridge";
 export * from "./UsdcCCTPBridge";
-export * from "./SolanaUsdcCCTPBridge";

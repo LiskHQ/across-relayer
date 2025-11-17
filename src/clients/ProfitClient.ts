@@ -178,8 +178,7 @@ export class ProfitClient {
     }
 
     const { decimals, addresses } = token;
-
-    const address = addresses[this.hubPoolClient.chainId] ?? addresses[chainId]; // Mainnet tokens have priority for price lookups.
+    const address = addresses[1]; // Mainnet tokens are always used for price lookups.
 
     return { symbol, address, decimals };
   }
@@ -563,18 +562,19 @@ export class ProfitClient {
     lpFeePct: BigNumber,
     l1Token: EvmAddress,
     repaymentChainId: number
-  ): Promise<
-    Pick<FillProfit, "profitable" | "nativeGasCost" | "gasPrice" | "tokenGasCost" | "netRelayerFeePct" | "totalFeePct">
-  > {
+  ): Promise<Pick<FillProfit, "profitable" | "nativeGasCost" | "gasPrice" | "tokenGasCost" | "netRelayerFeePct">> {
     let profitable = false;
     let netRelayerFeePct = bnZero;
     let nativeGasCost = uint256Max;
     let tokenGasCost = uint256Max;
     let gasPrice = uint256Max;
-    let totalFeePct = bnZero;
     try {
-      ({ profitable, netRelayerFeePct, nativeGasCost, tokenGasCost, gasPrice, totalFeePct } =
-        await this.getFillProfitability(deposit, lpFeePct, l1Token, repaymentChainId));
+      ({ profitable, netRelayerFeePct, nativeGasCost, tokenGasCost, gasPrice } = await this.getFillProfitability(
+        deposit,
+        lpFeePct,
+        l1Token,
+        repaymentChainId
+      ));
     } catch (err) {
       this.logger.debug({
         at: "ProfitClient#isFillProfitable",
@@ -590,7 +590,6 @@ export class ProfitClient {
       tokenGasCost,
       gasPrice,
       netRelayerFeePct,
-      totalFeePct,
     };
   }
 
@@ -692,13 +691,7 @@ export class ProfitClient {
     try {
       const tokenAddrs = Array.from(new Set(Object.values(tokens)));
       const tokenPrices = await this.priceClient.getPricesByAddress(tokenAddrs, "usd");
-      const matic = TOKEN_SYMBOLS_MAP.MATIC.addresses[CHAIN_IDs.MAINNET];
-      tokenPrices.forEach(({ address, price }) => {
-        this.tokenPrices[address] = toBNWei(price);
-        if (this.tokenPrices[matic].eq(bnZero)) {
-          this.tokenPrices[matic] = toBNWei("0.10");
-        }
-      });
+      tokenPrices.forEach(({ address, price }) => (this.tokenPrices[address] = toBNWei(price)));
       this.logger.debug({ at: "ProfitClient", message: "Updated token prices", tokenPrices: this.tokenPrices });
     } catch (err) {
       const errMsg = `Failed to update token prices (${err})`;

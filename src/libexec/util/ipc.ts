@@ -1,6 +1,6 @@
 import { utils as sdkUtils } from "@across-protocol/sdk";
 import { isDefined, sortEventsAscending } from "../../utils";
-import { Log, ListenerMessage } from "./../types";
+import { Log, SpokePoolClientMessage } from "./../types";
 
 /**
  * Given the inputs for a SpokePoolClient update, consolidate the inputs into a message and submit it to the parent
@@ -18,7 +18,7 @@ export function postEvents(blockNumber: number, currentTime: number, events: Log
   }
 
   events = sortEventsAscending(events);
-  const message: ListenerMessage = {
+  const message: SpokePoolClientMessage = {
     blockNumber,
     currentTime,
     nEvents: events.length,
@@ -45,7 +45,7 @@ export function removeEvent(event: Log): void {
     return;
   }
 
-  const message: ListenerMessage = {
+  const message: SpokePoolClientMessage = {
     event: JSON.stringify(event, sdkUtils.jsonReplacerWithBigNumbers),
   };
   process.send(JSON.stringify(message));
