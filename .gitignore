@@ -28,6 +28,9 @@ dist
 # Address lists
 addresses.json
 
+# Inventory config
+inventoryConfig.json
+
 # AI context files
 CLAUDE.md
 
