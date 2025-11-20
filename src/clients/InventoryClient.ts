@@ -38,7 +38,8 @@ import {
   forEachAsync,
   max,
 } from "../utils";
-import { BundleDataApproxClient, HubPoolClient, TokenClient } from ".";
+import { BundleDataApproxClient, BundleDataState } from "./BundleDataApproxClient";
+import { HubPoolClient, TokenClient } from ".";
 import { Deposit, ProposedRootBundle } from "../interfaces";
 import { InventoryConfig, isAliasConfig, TokenBalanceConfig } from "../interfaces/InventoryManagement";
 import lodash from "lodash";
@@ -62,6 +63,12 @@ export type Rebalance = {
 
 const DEFAULT_TOKEN_OVERAGE = toBNWei("1.5");
 
+export type InventoryClientState = {
+  bundleDataState: BundleDataState;
+  pendingL2Withdrawals: { [l1Token: string]: { [chainId: number]: BigNumber } };
+  inventoryConfig: InventoryConfig;
+};
+
 export class InventoryClient {
   private logDisabledManagement = false;
   private readonly scalar: BigNumber;
@@ -69,12 +76,13 @@ export class InventoryClient {
   private excessRunningBalancePromises: { [l1Token: string]: Promise<{ [chainId: number]: BigNumber }> } = {};
   private profiler: InstanceType<typeof Profiler>;
   private bundleDataApproxClient: BundleDataApproxClient;
+  private inventoryConfig: InventoryConfig;
   private pendingL2Withdrawals: { [l1Token: string]: { [chainId: number]: BigNumber } } = {};
 
   constructor(
     readonly relayer: EvmAddress,
     readonly logger: winston.Logger,
-    readonly inventoryConfig: InventoryConfig,
+    inventoryConfig: InventoryConfig,
     readonly tokenClient: TokenClient,
     readonly chainIdList: number[],
     readonly hubPoolClient: HubPoolClient,
@@ -83,6 +91,7 @@ export class InventoryClient {
     readonly simMode = false,
     readonly prioritizeLpUtilization = true
   ) {
+    this.inventoryConfig = inventoryConfig;
     this.scalar = sdkUtils.fixedPointAdjustment;
     this.formatWei = createFormatFunction(2, 4, false, 18);
     this.profiler = new Profiler({
@@ -105,6 +114,44 @@ export class InventoryClient {
   }
 
   /**
+   * Export current InventoryClient state.
+   * @returns InventoryClient state. This can be subsequently ingested by InventoryClient.import().
+   */
+  export(): InventoryClientState {
+    const { upcomingDeposits, upcomingRefunds } = this.bundleDataApproxClient.export();
+    const state = {
+      inventoryConfig: this.inventoryConfig,
+      bundleDataState: {
+        upcomingDeposits,
+        upcomingRefunds,
+      },
+      pendingL2Withdrawals: this.pendingL2Withdrawals,
+    };
+
+    this.logger.debug({ at: "InventoryClient::export", message: "Exported inventory client state." });
+    return state;
+  }
+
+  /**
+   * Import InventoryClient state.
+   * @returns void
+   */
+  import(state: InventoryClientState) {
+    const { bundleDataState, pendingL2Withdrawals } = state;
+    this.inventoryConfig = state.inventoryConfig;
+    this.bundleDataApproxClient.import(bundleDataState);
+    this.pendingL2Withdrawals = pendingL2Withdrawals;
+    this.logger.debug({ at: "InventoryClient::import", message: "Imported inventory client state." });
+  }
+
+  /**
+   * Get the cache key for the InventoryClient state.
+   * @returns Cache key for the InventoryClient state
+   */
+  getInventoryCacheKey(inventoryTopic: string): string {
+    return `${inventoryTopic}-${this.relayer}`;
+  }
+  /**
    * Resolve the token balance configuration for `l1Token` on `chainId`. If `l1Token` maps to multiple tokens on
    * `chainId` then `l2Token` must be supplied.
    * @param l1Token L1 token address to query.
@@ -123,6 +170,16 @@ export class InventoryClient {
     } else {
       return tokenConfig[chainId];
     }
+  }
+
+  isSwapSupported(inputToken: Address, outputToken: Address, inputChainId: number, outputChainId: number): boolean {
+    return (this.inventoryConfig?.allowedSwapRoutes ?? []).some(
+      (swapRoute) =>
+        swapRoute.fromChain === inputChainId &&
+        swapRoute.fromToken === inputToken.toNative() &&
+        swapRoute.toChain === outputChainId &&
+        swapRoute.toToken === outputToken.toNative()
+    );
   }
 
   /*
@@ -423,6 +480,11 @@ export class InventoryClient {
       destinationChainId
     );
     if (equivalentTokens) {
+      return true;
+    }
+
+    // Return true if the input and output tokens are defined as equivalent according to a user-defined swap config.
+    if (this.isSwapSupported(inputToken, outputToken, originChainId, destinationChainId)) {
       return true;
     }
 
@@ -1405,7 +1467,7 @@ export class InventoryClient {
             }`,
             {
               l1Token: l1Token.toEvmAddress(),
-              l2Token: l2Token.toEvmAddress(),
+              l2Token: l2Token.toNative(),
               cumulativeBalance: formatter(cumulativeBalance),
               currentAllocPct: formatUnits(currentAllocPct, 18),
               excessWithdrawThresholdPct: formatUnits(excessWithdrawThresholdPct, 18),
@@ -1496,7 +1558,7 @@ export class InventoryClient {
             withdrawals.map((withdrawal) => {
               return {
                 ...withdrawal,
-                l2Token: withdrawal.l2Token.toEvmAddress(),
+                l2Token: withdrawal.l2Token.toNative(),
               };
             }),
           ];

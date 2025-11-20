@@ -1,6 +1,6 @@
 // Fix to console log in single line, and add error message to log.
 import winston from "winston";
-import { createNewLogger, createConsoleTransport } from "@uma/logger";
+import { createNewLogger, createConsoleTransport } from "@risk-labs/logger";
 
 const transports = process.env.DEBUG_LOG === "true" ? [createConsoleTransport()] : [new winston.transports.Console()];
 const config = process.env.DEBUG_LOG === "true" ? {} : { createConsoleTransport: false };

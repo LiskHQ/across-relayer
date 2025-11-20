@@ -34,6 +34,9 @@ import {
   ZERO_BYTES,
   isEVMSpokePoolClient,
   EvmAddress,
+  chainIsEvm,
+  sendAndConfirmSolanaTransaction,
+  getSvmProvider,
 } from "../utils";
 import { AugmentedTransaction, TransactionClient } from "../clients/TransactionClient";
 import {
@@ -291,7 +294,7 @@ export class BaseChainAdapter {
     if (!this.isSupportedL2Bridge(l1Token)) {
       return [];
     }
-    let txnsToSend: AugmentedTransaction[];
+    let txnsToSend;
     try {
       txnsToSend = await this.l2Bridges[l1Token.toNative()].constructWithdrawToL1Txns(
         address,
@@ -317,10 +320,17 @@ export class BaseChainAdapter {
       );
       return [];
     }
-    const multicallerClient = new MultiCallerClient(this.logger);
-    txnsToSend.forEach((txn) => multicallerClient.enqueueTransaction(txn));
-    const txnReceipts = await multicallerClient.executeTxnQueues(simMode);
-    return txnReceipts[this.chainId];
+    if (chainIsEvm(this.chainId)) {
+      const multicallerClient = new MultiCallerClient(this.logger);
+      txnsToSend.forEach((txn) => multicallerClient.enqueueTransaction(txn));
+      const txnReceipts = await multicallerClient.executeTxnQueues(simMode, [this.chainId]);
+      return txnReceipts[this.chainId];
+    }
+    const txnSignatures = [];
+    for (const solanaTransaction of txnsToSend) {
+      txnSignatures.push(await sendAndConfirmSolanaTransaction(solanaTransaction, getSvmProvider()));
+    }
+    return txnSignatures;
   }
 
   async getL2PendingWithdrawalAmount(
@@ -453,8 +463,8 @@ export class BaseChainAdapter {
     // Permit bypass if simMode is set in order to permit tests to pass.
     if (simMode === false) {
       const symbol = await contract.symbol();
-      const { BSC, HYPEREVM, MAINNET, PLASMA } = CHAIN_IDs;
-      const nativeTokenChains = [BSC, HYPEREVM, MAINNET, PLASMA];
+      const { BSC, HYPEREVM, MAINNET, PLASMA, MONAD } = CHAIN_IDs;
+      const nativeTokenChains = [BSC, HYPEREVM, MAINNET, PLASMA, MONAD];
       const prependW = nativeTokenChains.some((chainId) => PUBLIC_NETWORKS[chainId].nativeToken === nativeTokenSymbol);
       const expectedTokenSymbol = prependW ? `W${nativeTokenSymbol}` : nativeTokenSymbol;
       assert(
