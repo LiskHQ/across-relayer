@@ -111,6 +111,7 @@ export const MIN_DEPOSIT_CONFIRMATIONS: { [threshold: number | string]: { [chain
   },
   [MDC_DEFAULT_THRESHOLD]: {
     [CHAIN_IDs.MAINNET]: 4,
+    [CHAIN_IDs.MONAD]: 10,
     [CHAIN_IDs.PLASMA]: 10,
     [CHAIN_IDs.POLYGON]: 64, // Probabilistically safe level based on historic Polygon reorgs
     [CHAIN_IDs.BSC]: 2, // Average takes 2.5 blocks to finalize but reorgs rarely happen
@@ -121,6 +122,7 @@ export const MIN_DEPOSIT_CONFIRMATIONS: { [threshold: number | string]: { [chain
     [CHAIN_IDs.LENS]: 0,
     [CHAIN_IDs.LINEA]: 1,
     [CHAIN_IDs.MAINNET]: 2, // Mainnet reorgs are rarely > 1 - 2 blocks in depth.
+    [CHAIN_IDs.MONAD]: 1,
     [CHAIN_IDs.PLASMA]: 1,
     [CHAIN_IDs.POLYGON]: 16,
     [CHAIN_IDs.SCROLL]: 2,
@@ -347,7 +349,7 @@ export const SUPPORTED_TOKENS: { [chainId: number]: string[] } = {
   [CHAIN_IDs.LINEA]: ["USDC", "USDT", "WETH", "WBTC", "DAI", "ezETH"],
   [CHAIN_IDs.LISK]: ["WETH", "USDC", "USDT", "LSK", "WBTC"],
   [CHAIN_IDs.MODE]: ["ETH", "WETH", "USDC", "USDT", "WBTC", "ezETH"],
-  [CHAIN_IDs.MONAD]: ["USDC"], // @TODO: Add USDT and WBTC after its added to the chain token list
+  [CHAIN_IDs.MONAD]: ["USDC", "USDT"], // @TODO: Add WBTC after its added to the chain token list
   [CHAIN_IDs.OPTIMISM]: [
     "DAI",
     "SNX",
@@ -514,8 +516,8 @@ export const CUSTOM_BRIDGE: Record<number, Record<string, L1BridgeConstructor<Ba
   },
   [CHAIN_IDs.MONAD]: {
     [TOKEN_SYMBOLS_MAP.USDC.addresses[CHAIN_IDs.MAINNET]]: UsdcCCTPBridge,
-    // @TODO: Add USDT and WBTC after its added to the chain token list
-    // [TOKEN_SYMBOLS_MAP.USDT.addresses[CHAIN_IDs.MAINNET]]: OFTBridge,
+    [TOKEN_SYMBOLS_MAP.USDT.addresses[CHAIN_IDs.MAINNET]]: OFTBridge,
+    // @TODO: Add WBTC after its added to the chain token list
     // [TOKEN_SYMBOLS_MAP.WBTC.addresses[CHAIN_IDs.MAINNET]]: OFTBridge,
   },
   [CHAIN_IDs.OPTIMISM]: {
@@ -639,7 +641,7 @@ export const CUSTOM_L2_BRIDGE: Record<number, Record<string, L2BridgeConstructor
   },
   [CHAIN_IDs.MONAD]: {
     [TOKEN_SYMBOLS_MAP.USDC.addresses[CHAIN_IDs.MAINNET]]: L2UsdcCCTPBridge,
-    // [TOKEN_SYMBOLS_MAP.USDT.addresses[CHAIN_IDs.MAINNET]]: OFTL2Bridge,
+    [TOKEN_SYMBOLS_MAP.USDT.addresses[CHAIN_IDs.MAINNET]]: OFTL2Bridge,
     // [TOKEN_SYMBOLS_MAP.WBTC.addresses[CHAIN_IDs.MAINNET]]: OFTL2Bridge,
   },
   [CHAIN_IDs.LINEA]: {
@@ -1019,8 +1021,7 @@ export const EVM_OFT_MESSENGERS: Map<string, Map<number, EvmAddress>> = new Map(
     TOKEN_SYMBOLS_MAP.USDT.addresses[CHAIN_IDs.MAINNET],
     new Map<number, EvmAddress>([
       [CHAIN_IDs.MAINNET, EvmAddress.from("0x6C96dE32CEa08842dcc4058c14d3aaAD7Fa41dee")],
-      // @TODO: Add this after enabling USDT0 on Monad
-      // [CHAIN_IDs.MONAD, EvmAddress.from("0x9151434b16b9763660705744891fa906f660ecc5")], // @TODO: Check with Monad team if this is correct
+      [CHAIN_IDs.MONAD, EvmAddress.from("0x9151434b16b9763660705744891fa906f660ecc5")], // @TODO: Check with Monad team if this is correct
       [CHAIN_IDs.ARBITRUM, EvmAddress.from("0x14E4A1B13bf7F943c8ff7C51fb60FA964A298D92")],
       [CHAIN_IDs.HYPEREVM, EvmAddress.from("0x904861a24F30EC96ea7CFC3bE9EA4B476d237e98")],
       [CHAIN_IDs.INK, EvmAddress.from("0x1cB6De532588fCA4a21B7209DE7C456AF8434A65")],
@@ -1046,7 +1047,7 @@ export const OFT_FEE_CAP_OVERRIDES: { [chainId: number]: BigNumber } = {
   // 0.4 BNB fee cap on BSC
   [CHAIN_IDs.BSC]: toWei("0.4"),
   [CHAIN_IDs.HYPEREVM]: toWei("8"),
-  [CHAIN_IDs.MONAD]: toWei("8"), // @TODO: Re-evaluate this after token launch
+  [CHAIN_IDs.MONAD]: toWei(100),
   [CHAIN_IDs.PLASMA]: toWei("600"),
   // 1600 MATIC/POL cap on Polygon
   [CHAIN_IDs.POLYGON]: toWei("1600"),
@@ -1063,40 +1064,33 @@ export type SwapRoute = {
 // Hardcoded swap routes the refiller can take to swap into the native token on the input destination chain ID.
 // @dev When calling the Swap API, the ZERO_ADDRESS is associated with the native gas token, even if
 // the native token address is not actually ZERO_ADDRESS.
-export const SWAP_ROUTES: { [chainId: number]: SwapRoute } = {
-  [CHAIN_IDs.BSC]: {
-    inputToken: EvmAddress.from(TOKEN_SYMBOLS_MAP.WETH.addresses[CHAIN_IDs.ARBITRUM]),
-    outputToken: EvmAddress.from(ZERO_ADDRESS),
+const generateSwapRoutes = () => {
+  const swapChains = [CHAIN_IDs.BSC, CHAIN_IDs.HYPEREVM, CHAIN_IDs.MONAD, CHAIN_IDs.POLYGON, CHAIN_IDs.PLASMA];
+
+  // Stable defaults that are a good fit for most chains.
+  // Arbitrum WETH is selected because the relayer receives bridge fee refunds from the Arbitrum canonical bridge.
+  const defaults = {
     originChainId: CHAIN_IDs.ARBITRUM,
-    destinationChainId: CHAIN_IDs.BSC,
-    tradeType: "exactOutput",
-  },
-  [CHAIN_IDs.MONAD]: {
-    inputToken: EvmAddress.from(TOKEN_SYMBOLS_MAP.WETH.addresses[CHAIN_IDs.ARBITRUM]),
+    inputTokenSymbol: "WETH",
     outputToken: EvmAddress.from(ZERO_ADDRESS),
-    originChainId: CHAIN_IDs.ARBITRUM,
-    destinationChainId: CHAIN_IDs.MONAD,
-    tradeType: "exactOutput",
-  },
-  [CHAIN_IDs.POLYGON]: {
-    inputToken: EvmAddress.from(ZERO_ADDRESS),
-    outputToken: EvmAddress.from(ZERO_ADDRESS),
-    originChainId: CHAIN_IDs.ARBITRUM,
-    destinationChainId: CHAIN_IDs.POLYGON,
-    tradeType: "exactOutput",
-  },
-  [CHAIN_IDs.HYPEREVM]: {
-    inputToken: EvmAddress.from(TOKEN_SYMBOLS_MAP.USDC.addresses[CHAIN_IDs.ARBITRUM]),
-    outputToken: EvmAddress.from(ZERO_ADDRESS),
-    originChainId: CHAIN_IDs.ARBITRUM,
-    destinationChainId: CHAIN_IDs.HYPEREVM,
-    tradeType: "exactOutput",
-  },
-  [CHAIN_IDs.PLASMA]: {
-    inputToken: EvmAddress.from(TOKEN_SYMBOLS_MAP.USDT.addresses[CHAIN_IDs.ARBITRUM]),
-    outputToken: EvmAddress.from(ZERO_ADDRESS),
-    originChainId: CHAIN_IDs.ARBITRUM,
-    destinationChainId: CHAIN_IDs.PLASMA,
-    tradeType: "exactOutput",
-  },
+    tradeType: "minOutput",
+  };
+
+  // Can override one or more defaults for a given chain here.
+  const overrides: Partial<typeof defaults> = {
+    [CHAIN_IDs.HYPEREVM]: { inputTokenSymbol: "USDC" },
+    [CHAIN_IDs.PLASMA]: { inputTokenSymbol: "USDT" },
+  };
+
+  return Object.fromEntries(
+    swapChains.map((destinationChainId) => {
+      const swapRoute = { ...defaults, ...(overrides[destinationChainId] ?? {}) };
+      const { originChainId, inputTokenSymbol } = swapRoute;
+      const inputToken = EvmAddress.from(TOKEN_SYMBOLS_MAP[inputTokenSymbol].addresses[originChainId]);
+
+      return [destinationChainId, { ...swapRoute, inputToken, destinationChainId }];
+    })
+  );
 };
+
+export const SWAP_ROUTES = generateSwapRoutes();

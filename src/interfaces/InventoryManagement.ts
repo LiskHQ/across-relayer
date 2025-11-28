@@ -20,11 +20,10 @@ export type ChainTokenInventory = {
 };
 
 export type SwapRoute = {
-  fromChain: number;
+  fromChain: number | "ALL";
   fromToken: string;
-  toChain: number;
+  toChain: number | "ALL";
   toToken: string;
-  bidirectional: boolean;
 };
 
 /**
@@ -75,6 +74,9 @@ export interface InventoryConfig {
 
   // Allows caller to specify specific swap routes eligible for filling.
   allowedSwapRoutes: SwapRoute[];
+
+  // Optional parameter which forces relayer repayment on the specified chain ID.
+  repaymentChainOverride: number | undefined;
 }
 
 export function isAliasConfig(config: ChainTokenConfig | ChainTokenInventory): config is ChainTokenInventory {
