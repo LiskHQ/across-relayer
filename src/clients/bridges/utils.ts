@@ -9,32 +9,22 @@ import { getRedisCache } from "../../cache/Redis";
  * a final step, the EOA must wrap the ETH back into WETH. This function is designed to be used to match the
  * receipt of ETH on L2 with the wrapping of ETH into WETH on L2 to produce a single stream of "finalized" cross
  * chain transfers.
- * @dev Matching wrap and deposit finalized events is inexact because the wrapped amount usually differs
- * slightly from the deposited amount due to fees and inventory management logic. This function therefore
- * coarsely matches L2 deposit events with L2 wrap events by finding the first wrap event following the deposit
- * event. This wrap event is then removed from a list and cannot be matched with any other deposit event. Since
- * wrapping ETH is only expected to be done by this relayer, then this is a very accurate proxy for deciding
- * when WETH cross chain transfers have finalized into the relayer's L2 WETH inventory.
+ * @dev Wrapping sweeps the relayer's whole ETH balance down to a gas reserve, so a single wrap converts every
+ * ETH deposit that landed before it. A deposit is therefore treated as finalized whenever any wrap follows it.
+ * Consuming one wrap per deposit instead would leave the newest deposits permanently unmatched whenever one
+ * wrap sweeps several of them, understating finalized transfers and overstating funds still in the bridge.
+ * @dev Amounts are deliberately not compared: a wrap is usually worth slightly less than the deposits it sweeps
+ * because gas is deducted, and callers already net deposited against finalized amounts. Since wrapping ETH is
+ * only expected to be done by this relayer, this is a very accurate proxy for deciding when WETH cross chain
+ * transfers have finalized into the relayer's L2 WETH inventory.
  * @dev This function is used in the WethBridge class in the OP stack and the ZkSyncAdapter.
  * @param l2EthDepositEvents List of L2 DepositFinalized events emitted when the EOA receives ETH on L2.
- * @param _l2WrapEvents List of L2 Wrap events emitted when the EOA wraps ETH into WETH on L2.
- * @returns List of l2EthDepositEvents followed by a l2WrapEvent. None of the
- * l2EthDepositEvents will match with the same l2WrapEvent.
+ * @param l2WrapEvents List of L2 Wrap events emitted when the EOA wraps ETH into WETH on L2.
+ * @returns The subset of l2EthDepositEvents that a subsequent l2WrapEvent has wrapped into WETH inventory.
  */
-export function matchL2EthDepositAndWrapEvents(l2EthDepositEvents: Log[], _l2WrapEvents: Log[]): Log[] {
-  const l2WrapEvents = [..._l2WrapEvents]; // deep-copy because we're going to modify this in-place.
-  return l2EthDepositEvents.filter((l2EthDepositEvent) => {
-    // Search from left to right to find the first following wrap event.
-    const followingWrapEventIndex = l2WrapEvents.findIndex(
-      (wrapEvent) => wrapEvent.blockNumber >= l2EthDepositEvent.blockNumber
-    );
-    // Delete the wrap event from the l2 wrap events array to avoid duplicate processing.
-    if (followingWrapEventIndex >= 0) {
-      l2WrapEvents.splice(followingWrapEventIndex, 1);
-      return true;
-    }
-    return false;
-  });
+export function matchL2EthDepositAndWrapEvents(l2EthDepositEvents: Log[], l2WrapEvents: Log[]): Log[] {
+  const latestWrapBlock = l2WrapEvents.reduce((latest, { blockNumber }) => Math.max(latest, blockNumber), -1);
+  return l2EthDepositEvents.filter(({ blockNumber }) => blockNumber <= latestWrapBlock);
 }
 
 // Note: All of these are set as `EvmAddress` types since their `toString()` implementation outputs a 20 byte address.
